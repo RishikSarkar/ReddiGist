@@ -146,7 +146,7 @@ Extracts top phrases from a Reddit thread.
   "top_phrases": [
     ["Phrase One", 0.85],
     ["Phrase Two", 0.72],
-    ...
+    ["Phrase Three", 0.69]
   ]
 }
 ```
