@@ -144,8 +144,8 @@ Extracts top phrases from a Reddit thread.
 ```json
 {
   "top_phrases": [
-    ["Phrase One", score],
-    ["Phrase Two", score],
+    ["Phrase One", 0.85],
+    ["Phrase Two", 0.72],
     ...
   ]
 }
