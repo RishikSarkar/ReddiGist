@@ -11,11 +11,16 @@ import os
 import logging
 import random
 import time
+import praw
+from dotenv import load_dotenv
+
 # from tqdm import tqdm
 # import spacy
 # from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 # import numpy as np
 # import traceback
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -49,44 +54,33 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.2365.66'
 ]
 
+reddit = praw.Reddit(
+    client_id=os.getenv('REDDIT_CLIENT_ID'),
+    client_secret=os.getenv('REDDIT_CLIENT_SECRET'),
+    user_agent="ReddiGist/1.0"
+)
+
 def get_reddit_data(url, retries=3):
-    """Get Reddit data with retry logic and anti-blocking measures"""
-    headers = {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br'
-    }
+    """Get Reddit data using official API"""
+    try:
+        submission_id = url.split('/comments/')[1].split('/')[0]
+        
+        submission = reddit.submission(id=submission_id)
+        submission.comments.replace_more(limit=None)
 
-    modified_url = url.replace('www.reddit.com', 'old.reddit.com')
-    modified_url = modified_url.split('?')[0]
-    modified_url = f"{modified_url}.json?raw_json=1"
+        comments = []
+        for comment in submission.comments.list():
+            if hasattr(comment, 'body') and comment.author and comment.author.name != 'AutoModerator':
+                comments.append({
+                    'text': comment.body,
+                    'score': comment.score
+                })
+        
+        return {'comments': comments}
 
-    for attempt in range(retries):
-        try:
-            if attempt > 0:
-                time.sleep(random.uniform(1, 3))
-
-            response = requests.get(
-                modified_url,
-                headers=headers,
-                timeout=10
-            )
-
-            if response.status_code == 200:
-                return response.json()
-            elif response.status_code == 429:
-                wait_time = int(response.headers.get('Retry-After', 60))
-                time.sleep(wait_time)
-                continue
-            elif attempt == retries - 1:
-                return None
-
-        except requests.RequestException as e:
-            if attempt == retries - 1:
-                raise e
-
-    return None
+    except Exception as e:
+        logger.error(f"Error fetching Reddit data: {str(e)}")
+        return None
 
 # Helper functions
 def clean_text(text):
@@ -331,12 +325,10 @@ def get_top_reddit_phrases():
     try:
         data = request.json
         if not data:
-            logger.error("No JSON payload provided")
             return jsonify({"error": "No JSON payload provided"}), 400
 
         urls = data.get('urls', [])
         if not urls:
-            logger.error("URLs are required")
             return jsonify({"error": "URLs are required"}), 400
 
         top_n = data.get('top_n', 3)
@@ -353,16 +345,14 @@ def get_top_reddit_phrases():
         for url in urls:
             try:
                 reddit_data = get_reddit_data(url)
-                if reddit_data:
-                    comments = []
-                    extract_all_comments(reddit_data, comments)
-                    all_comments.extend(comments)
+                if reddit_data and 'comments' in reddit_data:
+                    all_comments.extend(reddit_data['comments'])
                 else:
                     error_msg = f"Failed to fetch data from {url}"
                     logger.warning(error_msg)
-                    return jsonify({"error": error_msg}), 503  # Service Unavailable
+                    return jsonify({"error": error_msg}), 503
 
-            except requests.RequestException as e:
+            except Exception as e:
                 error_msg = f"Error processing URL {url}: {str(e)}"
                 logger.warning(error_msg)
                 return jsonify({"error": error_msg}), 500
