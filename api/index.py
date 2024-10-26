@@ -9,6 +9,8 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import os
 import logging
+import random
+import time
 # from tqdm import tqdm
 # import spacy
 # from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
@@ -39,6 +41,52 @@ nltk.data.path.append(os.path.join(BASE_DIR, 'nltk_data'))
 # custom_stop_words = spacy_stop_words.union(ENGLISH_STOP_WORDS).union(set(stopwords.words('english')))
 # custom_stop_words = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
 custom_stop_words = set(stopwords.words('english'))
+
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.2365.66'
+]
+
+def get_reddit_data(url, retries=3):
+    """Get Reddit data with retry logic and anti-blocking measures"""
+    headers = {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br'
+    }
+
+    modified_url = url.replace('www.reddit.com', 'old.reddit.com')
+    modified_url = modified_url.split('?')[0]
+    modified_url = f"{modified_url}.json?raw_json=1"
+
+    for attempt in range(retries):
+        try:
+            if attempt > 0:
+                time.sleep(random.uniform(1, 3))
+
+            response = requests.get(
+                modified_url,
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 429:
+                wait_time = int(response.headers.get('Retry-After', 60))
+                time.sleep(wait_time)
+                continue
+            elif attempt == retries - 1:
+                return None
+
+        except requests.RequestException as e:
+            if attempt == retries - 1:
+                raise e
+
+    return None
 
 # Helper functions
 def clean_text(text):
@@ -301,54 +349,19 @@ def get_top_reddit_phrases():
         # Step 1: Fetch Reddit JSON for all URLs
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/131.0',
-            'Accept': 'application/json',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Cookie': '',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'cross-site',
-            'Pragma': 'no-cache',
-            'Cache-Control': 'no-cache'
-        }
 
         for url in urls:
             try:
-                modified_url = url.replace('www.reddit.com', 'old.reddit.com') + '.json'
-                response = requests.get(
-                    modified_url,
-                    headers=headers,
-                    timeout=10,
-                    allow_redirects=True
-                )
-                
-                if response.status_code == 200:
-                    reddit_data = response.json()
+                reddit_data = get_reddit_data(url)
+                if reddit_data:
                     comments = []
                     extract_all_comments(reddit_data, comments)
                     all_comments.extend(comments)
                 else:
-                    modified_url = url.replace('www.reddit.com', 'reddit.com') + '.json'
-                    response = requests.get(
-                        modified_url,
-                        headers=headers,
-                        timeout=10,
-                        allow_redirects=True
-                    )
-                    
-                    if response.status_code == 200:
-                        reddit_data = response.json()
-                        comments = []
-                        extract_all_comments(reddit_data, comments)
-                        all_comments.extend(comments)
-                    else:
-                        error_msg = f"Failed to fetch data from {url}. Status code: {response.status_code}"
-                        logger.warning(error_msg)
-                        return jsonify({"error": error_msg}), response.status_code
-                
+                    error_msg = f"Failed to fetch data from {url}"
+                    logger.warning(error_msg)
+                    return jsonify({"error": error_msg}), 503  # Service Unavailable
+
             except requests.RequestException as e:
                 error_msg = f"Error processing URL {url}: {str(e)}"
                 logger.warning(error_msg)
