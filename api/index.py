@@ -302,27 +302,53 @@ def get_top_reddit_phrases():
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/131.0',
+            'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Cache-Control': 'max-age=0'
+            'Cookie': '',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'cross-site',
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache'
         }
 
         for url in urls:
             try:
-                response = requests.get(url + '.json', headers=headers, timeout=10)
+                modified_url = url.replace('www.reddit.com', 'old.reddit.com') + '.json'
+                response = requests.get(
+                    modified_url,
+                    headers=headers,
+                    timeout=10,
+                    allow_redirects=True
+                )
+                
                 if response.status_code == 200:
                     reddit_data = response.json()
                     comments = []
                     extract_all_comments(reddit_data, comments)
                     all_comments.extend(comments)
                 else:
-                    error_msg = f"Failed to fetch data from {url}. Status code: {response.status_code}"
-                    logger.warning(error_msg)
-                    return jsonify({"error": error_msg}), response.status_code
+                    modified_url = url.replace('www.reddit.com', 'reddit.com') + '.json'
+                    response = requests.get(
+                        modified_url,
+                        headers=headers,
+                        timeout=10,
+                        allow_redirects=True
+                    )
+                    
+                    if response.status_code == 200:
+                        reddit_data = response.json()
+                        comments = []
+                        extract_all_comments(reddit_data, comments)
+                        all_comments.extend(comments)
+                    else:
+                        error_msg = f"Failed to fetch data from {url}. Status code: {response.status_code}"
+                        logger.warning(error_msg)
+                        return jsonify({"error": error_msg}), response.status_code
+                
             except requests.RequestException as e:
                 error_msg = f"Error processing URL {url}: {str(e)}"
                 logger.warning(error_msg)
