@@ -264,59 +264,99 @@ def final_post_process(phrases, custom_words):
 
 #     return phrase_tfidf_map
 
-def calculate_tfidf(phrases, comments):
-    tf_scores = defaultdict(float)
-    df_scores = defaultdict(int)
-    N = len(comments)
+# def calculate_tfidf(phrases, comments):
+#     tf_scores = defaultdict(float)
+#     df_scores = defaultdict(int)
+#     N = len(comments)
+    
+#     for phrase in phrases:
+#         phrase_lower = phrase.lower()
+#         for comment in comments:
+#             text_lower = comment['text'].lower()
+#             count = text_lower.count(phrase_lower)
+#             if count > 0:
+#                 tf_scores[phrase] += 1 + math.log(count) if count > 0 else 0
+#                 df_scores[phrase] += 1
+    
+#     tfidf_scores = {}
+#     for phrase in phrases:
+#         if df_scores[phrase] > 0:
+#             tf = tf_scores[phrase]
+#             idf = math.log((1 + N)/(1 + df_scores[phrase])) + 1
+#             tfidf_scores[phrase] = tf * idf
+    
+#     norm = math.sqrt(sum(score * score for score in tfidf_scores.values()))
+#     if norm > 0:
+#         for phrase in tfidf_scores:
+#             tfidf_scores[phrase] /= norm
+    
+#     return tfidf_scores
+
+# def phrase_tfidf(phrases, comments):
+#     return calculate_tfidf(phrases, comments)
+
+# def compute_phrase_upvotes(phrases, comments):
+#     phrase_upvote_map = defaultdict(int)
+
+#     for comment in comments:
+#         comment_text_lower = comment['text'].lower()
+
+#         for phrase in phrases:
+#             if phrase.lower() in comment_text_lower:
+#                 phrase_upvote_map[phrase] += comment['score']
+
+#     return phrase_upvote_map
+
+def find_phrase_positions(comment_text, phrases):
+    """
+    Find sequential positions (1, 2, 3, ...) of phrases based on order of appearance
+    regardless of their actual position in the text
+    """
+    positions = {}
+    current_position = 1
+    comment_lower = comment_text.lower()
+    seen_phrases = set()
     
     for phrase in phrases:
         phrase_lower = phrase.lower()
-        for comment in comments:
-            text_lower = comment['text'].lower()
-            count = text_lower.count(phrase_lower)
-            if count > 0:
-                tf_scores[phrase] += 1 + math.log(count) if count > 0 else 0
-                df_scores[phrase] += 1
+        if phrase_lower in comment_lower and phrase_lower not in seen_phrases:
+            positions[phrase] = current_position
+            current_position += 1
+            seen_phrases.add(phrase_lower)
     
-    tfidf_scores = {}
-    for phrase in phrases:
-        if df_scores[phrase] > 0:
-            tf = tf_scores[phrase]
-            idf = math.log((1 + N)/(1 + df_scores[phrase])) + 1
-            tfidf_scores[phrase] = tf * idf
+    return positions
+
+def calculate_phrase_score(upvotes, position, alpha=0.1):
+    """Calculate score using the formula: Score = Upvotes / (Position^α)"""
+    if position <= 0:
+        return 0
+    return upvotes / (position ** alpha)
+
+def compute_phrase_scores(phrases, comments):
+    """Compute scores for phrases based on sequential position and upvotes"""
+    phrase_scores = defaultdict(float)
     
-    norm = math.sqrt(sum(score * score for score in tfidf_scores.values()))
-    if norm > 0:
-        for phrase in tfidf_scores:
-            tfidf_scores[phrase] /= norm
-    
-    return tfidf_scores
-
-def phrase_tfidf(phrases, comments):
-    return calculate_tfidf(phrases, comments)
-
-def compute_phrase_upvotes(phrases, comments):
-    phrase_upvote_map = defaultdict(int)
-
     for comment in comments:
-        comment_text_lower = comment['text'].lower()
-
-        for phrase in phrases:
-            if phrase.lower() in comment_text_lower:
-                phrase_upvote_map[phrase] += comment['score']
-
-    return phrase_upvote_map
+        positions = find_phrase_positions(comment['text'], phrases)
+        
+        for phrase, position in positions.items():
+            score = calculate_phrase_score(
+                upvotes=max(1, comment['score']),
+                position=position
+            )
+            phrase_scores[phrase] += score
+    
+    return phrase_scores
 
 def top_phrases_combined(phrases, comments, top_n=10):
-    phrase_tfidf_map = phrase_tfidf(phrases, comments)
-    phrase_upvotes = compute_phrase_upvotes(phrases, comments)
-
-    combined_scores = {}
-    for phrase in phrases:
-        combined_score = phrase_tfidf_map.get(phrase, 0) + phrase_upvotes.get(phrase, 0)
-        combined_scores[phrase] = combined_score
-
-    sorted_phrases = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+    """Get top phrases using position-based scoring"""
+    phrase_scores = compute_phrase_scores(phrases, comments)
+    
+    sorted_phrases = sorted(
+        phrase_scores.items(), 
+        key=lambda x: x[1], 
+        reverse=True
+    )
     
     return sorted_phrases[:top_n]
 
