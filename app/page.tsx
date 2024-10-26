@@ -17,6 +17,7 @@ export default function Home() {
   const [printScores, setPrintScores] = useState(false);
   const [result, setResult] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -46,40 +47,45 @@ export default function Home() {
     
     setIsLoading(true);
     setResult([]);
+    setWarning(null);
 
     try {
-      const response = await fetch('/api/top_phrases', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          urls: selectedPosts.map(post => post.url),
-          top_n: parseInt(topN),
-          custom_words: customWords,
-          ngram_limit: parseInt(ngramLimit),
-          apply_remove_lowercase: applyRemoveLowercase,
-          print_scores: printScores,
-        }),
-      });
+        const response = await fetch('/api/top_phrases', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                urls: selectedPosts.map(post => post.url),
+                top_n: parseInt(topN),
+                custom_words: customWords,
+                ngram_limit: parseInt(ngramLimit),
+                apply_remove_lowercase: applyRemoveLowercase,
+                print_scores: printScores,
+            }),
+        });
 
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Network response was not ok');
+        }
 
-      const data = await response.json();
-      setResult(data.top_phrases);
+        setResult(data.top_phrases);
+        if (data.warning) {
+            setWarning(data.warning);
+        }
     } catch (error) {
-      console.error('Error:', error);
-      setResult(['An error occurred while fetching the data.']);
+        console.error('Error:', error);
+        setResult([error instanceof Error ? error.message : 'An error occurred while fetching the data.']);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
   };
 
   return (
     <main className="min-h-screen bg-[#0e1113] text-white p-8">
-      <div className="max-w-2xl mx-auto"> {/* Added container div with center alignment */}
+      <div className="max-w-2xl mx-auto">
         <h1 className="text-4xl font-bold mb-8 text-[#D93900] text-center">ReddiGist</h1>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* URL Input Section */}
@@ -245,6 +251,11 @@ export default function Home() {
         {result.length > 0 && (
           <div className="mt-8 bg-[#1A1A1B] p-6 rounded-lg">
             <h2 className="text-2xl font-bold mb-4 text-[#D93900] text-center">Top Phrases</h2>
+            {warning && (
+              <div className="mb-4 p-3 bg-[#272729] rounded text-gray-400 text-sm">
+                {warning}
+              </div>
+            )}
             <ul className="list-decimal list-inside space-y-2">
               {result.map((phrase, index) => (
                 <li key={index} className="text-lg">

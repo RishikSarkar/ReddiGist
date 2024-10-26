@@ -60,23 +60,47 @@ reddit = praw.Reddit(
     user_agent="ReddiGist/1.0"
 )
 
-def get_reddit_data(url, retries=3):
-    """Get Reddit data using official API"""
+def get_reddit_data(url, max_comments=10000, timeout=300):
+    """Get Reddit data using official API within free tier limits"""
     try:
         submission_id = url.split('/comments/')[1].split('/')[0]
         
         submission = reddit.submission(id=submission_id)
-        submission.comments.replace_more(limit=None)
+        submission.comments.replace_more(limit=32)
 
         comments = []
+        comment_count = 0
+        start_time = time.time()
+        requests_made = 0
+        
         for comment in submission.comments.list():
+            if requests_made >= 58:
+                time.sleep(2)
+                requests_made = 0
+            
+            if time.time() - start_time > timeout:
+                logger.warning(f"Timeout reached for {url} after {comment_count} comments")
+                break
+                
+            if comment_count >= max_comments:
+                logger.warning(f"Max comments ({max_comments}) reached for {url}")
+                break
+                
             if hasattr(comment, 'body') and comment.author and comment.author.name != 'AutoModerator':
                 comments.append({
                     'text': comment.body,
                     'score': comment.score
                 })
+                comment_count += 1
+                
+            requests_made += 1
         
-        return {'comments': comments}
+        if comments:
+            logger.info(f"Successfully fetched {len(comments)} comments from {url}")
+            return {'comments': comments}
+        else:
+            logger.warning(f"No comments fetched from {url}")
+            return None
 
     except Exception as e:
         logger.error(f"Error fetching Reddit data: {str(e)}")
@@ -348,17 +372,59 @@ def compute_phrase_scores(phrases, comments):
     
     return phrase_scores
 
+def is_substring_of_any(phrase, other_phrases):
+    """Check if phrase is a substring of any other phrase"""
+    phrase_lower = phrase.lower()
+    return any(
+        phrase_lower in other.lower() and phrase_lower != other.lower()
+        for other in other_phrases
+    )
+
+def is_incomplete_phrase(phrase):
+    """Check if phrase ends with common connecting words"""
+    connecting_words = {'and', 'or', 'of', 'the', 'in', 'on', 'at', 'to', 'for', 'with'}
+    words = phrase.split()
+    return (len(words) > 0 and words[-1].lower() in connecting_words)
+
 def top_phrases_combined(phrases, comments, top_n=10):
-    """Get top phrases using position-based scoring"""
+    """Get top phrases using position-based scoring with substring deduplication"""
     phrase_scores = compute_phrase_scores(phrases, comments)
     
     sorted_phrases = sorted(
         phrase_scores.items(), 
-        key=lambda x: x[1], 
+        key=lambda x: x[1],
         reverse=True
     )
     
-    return sorted_phrases[:top_n]
+    final_phrases = []
+    seen_phrases = set()
+    
+    for phrase, score in sorted_phrases:
+        if (not is_incomplete_phrase(phrase) and
+            phrase.lower() not in seen_phrases and 
+            not is_substring_of_any(phrase, final_phrases)):
+            
+            final_phrases.append(phrase)
+            seen_phrases.add(phrase.lower())
+            
+            if len(final_phrases) >= top_n:
+                break
+    
+    if len(final_phrases) < top_n:
+        remaining_needed = top_n - len(final_phrases)
+        for phrase, score in sorted_phrases:
+            if (phrase not in final_phrases and 
+                not is_incomplete_phrase(phrase) and
+                phrase.lower() not in seen_phrases):
+                
+                final_phrases.append(phrase)
+                seen_phrases.add(phrase.lower())
+                
+                remaining_needed -= 1
+                if remaining_needed <= 0:
+                    break
+
+    return [(phrase, phrase_scores[phrase]) for phrase in final_phrases[:top_n]]
 
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
@@ -422,9 +488,22 @@ def get_top_reddit_phrases():
             if apply_remove_lowercase:
                 common_phrases = remove_all_lowercase_phrases(common_phrases)
             
-            print(common_phrases)
-
-            new_phrases = set(phrase for phrase in common_phrases if phrase.lower() not in all_common_phrases_lower)
+            clean_phrases = set()
+            seen_phrases_lower = set()
+            
+            sorted_phrases = sorted(common_phrases, key=len, reverse=True)
+            
+            for phrase in sorted_phrases:
+                if (not is_incomplete_phrase(phrase) and 
+                    phrase.lower() not in seen_phrases_lower and
+                    not is_substring_of_any(phrase, clean_phrases)):
+                    
+                    clean_phrases.add(phrase)
+                    seen_phrases_lower.add(phrase.lower())
+            
+            new_phrases = set(phrase for phrase in clean_phrases 
+                             if phrase.lower() not in all_common_phrases_lower)
+            
             all_common_phrases.update(new_phrases)
             all_common_phrases_lower.update(phrase.lower() for phrase in new_phrases)
 
@@ -442,7 +521,7 @@ def get_top_reddit_phrases():
                 all_words.update(comment['text'].split())
             all_common_phrases = list(all_words)[:top_n]
 
-        # Step 4: Compute Top Phrases Using TF-IDF + Upvotes
+        # Step 4: Compute Top Phrases Using position and upvote-based scoring
         logger.info("Step (4/4): Calculating top phrases...")
         top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n)
         logger.info("Done.")
@@ -454,12 +533,20 @@ def get_top_reddit_phrases():
             else:
                 result.append(f'{phrase}')
 
+        response_data = {'top_phrases': result}
+
+        if len(result) < top_n:
+            response_data['warning'] = f"Only found {len(result)} relevant phrases. Add more threads if you'd like to see more!"
+
         logger.info(f"Returning result: {result}")
-        return jsonify({'top_phrases': result})
+        return jsonify(response_data)
 
     except Exception as e:
+        error_msg = str(e)
+        if "timeout" in error_msg.lower() or "socket" in error_msg.lower():
+            error_msg = "Request timed out. Try reducing the number of threads or selecting threads with fewer comments."
         logger.error("An error occurred:", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": error_msg}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
