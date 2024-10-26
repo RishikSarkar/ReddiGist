@@ -4,16 +4,16 @@ import requests
 import re
 import math
 from collections import Counter, defaultdict
-from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
-import numpy as np
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-# import traceback
 import os
 import logging
 # from tqdm import tqdm
 # import spacy
+# from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
+# import numpy as np
+# import traceback
 
 app = Flask(__name__)
 CORS(app)
@@ -31,14 +31,14 @@ nltk.data.path.append(nltk_data_dir)
 nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=True)
 nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
 
-stop_words = set(stopwords.words('english'))
+# stop_words = set(stopwords.words('english'))
 
 # nlp = spacy.load('en_core_web_sm')
 
 # spacy_stop_words = nlp.Defaults.stop_words
 # custom_stop_words = spacy_stop_words.union(ENGLISH_STOP_WORDS).union(set(stopwords.words('english')))
-
-custom_stop_words = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
+# custom_stop_words = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
+custom_stop_words = set(stopwords.words('english'))
 
 # Helper functions
 def clean_text(text):
@@ -67,7 +67,7 @@ def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
         
         for n in range(2, ngram_limit + 1):
             for ngram in nltk.ngrams(tokens, n):
-                if not all(word.lower() in stop_words for word in ngram):
+                if not all(word.lower() in custom_stop_words for word in ngram):
                     ngram_list.append(ngram)
     
     ngram_counts = Counter(ngram_list)
@@ -117,11 +117,11 @@ def remove_custom_words(phrase, custom_words):
     cleaned_words = [word for word in words if word.lower() not in custom_words]
     return ' '.join(cleaned_words)
 
-def remove_common_only_phrases(phrases, stop_words):
+def remove_common_only_phrases(phrases, custom_stop_words):
     filtered_phrases = []
     for phrase in phrases:
         words = phrase.split()
-        if not all(word.lower() in stop_words for word in words) and len(words) > 2:
+        if not all(word.lower() in custom_stop_words for word in words) and len(words) > 2:
             filtered_phrases.append(phrase)
     return filtered_phrases
 
@@ -206,21 +206,52 @@ def final_post_process(phrases, custom_words):
     phrases = remove_substrings(phrases)
     phrases = [remove_custom_words(phrase, custom_words) for phrase in phrases]
     phrases = combine_similar_phrases(phrases)
-    phrases = remove_common_only_phrases(phrases, stop_words)
+    phrases = remove_common_only_phrases(phrases, custom_stop_words)
     phrases = remove_grammar(phrases)
     
     return phrases
 
-def phrase_tfidf(phrases, comments, ngram_limit=5):
-    comment_texts = [comment['text'] for comment in comments]
+# def phrase_tfidf(phrases, comments, ngram_limit=5):
+#     comment_texts = [comment['text'] for comment in comments]
     
-    vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, ngram_limit + 2), lowercase=False)
-    tfidf_matrix = vectorizer.fit_transform(comment_texts)
+#     vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, ngram_limit + 2), lowercase=False)
+#     tfidf_matrix = vectorizer.fit_transform(comment_texts)
 
-    tfidf_scores = np.sum(tfidf_matrix.toarray(), axis=0)
-    phrase_tfidf_map = dict(zip(vectorizer.get_feature_names_out(), tfidf_scores))
+#     tfidf_scores = np.sum(tfidf_matrix.toarray(), axis=0)
+#     phrase_tfidf_map = dict(zip(vectorizer.get_feature_names_out(), tfidf_scores))
 
-    return phrase_tfidf_map
+#     return phrase_tfidf_map
+
+def calculate_tfidf(phrases, comments):
+    tf_scores = defaultdict(float)
+    df_scores = defaultdict(int)
+    N = len(comments)
+    
+    for phrase in phrases:
+        phrase_lower = phrase.lower()
+        for comment in comments:
+            text_lower = comment['text'].lower()
+            count = text_lower.count(phrase_lower)
+            if count > 0:
+                tf_scores[phrase] += 1 + math.log(count) if count > 0 else 0
+                df_scores[phrase] += 1
+    
+    tfidf_scores = {}
+    for phrase in phrases:
+        if df_scores[phrase] > 0:
+            tf = tf_scores[phrase]
+            idf = math.log((1 + N)/(1 + df_scores[phrase])) + 1
+            tfidf_scores[phrase] = tf * idf
+    
+    norm = math.sqrt(sum(score * score for score in tfidf_scores.values()))
+    if norm > 0:
+        for phrase in tfidf_scores:
+            tfidf_scores[phrase] /= norm
+    
+    return tfidf_scores
+
+def phrase_tfidf(phrases, comments):
+    return calculate_tfidf(phrases, comments)
 
 def compute_phrase_upvotes(phrases, comments):
     phrase_upvote_map = defaultdict(int)
@@ -234,8 +265,8 @@ def compute_phrase_upvotes(phrases, comments):
 
     return phrase_upvote_map
 
-def top_phrases_combined(phrases, comments, top_n=10, ngram_limit=5):
-    phrase_tfidf_map = phrase_tfidf(phrases, comments, ngram_limit)
+def top_phrases_combined(phrases, comments, top_n=10):
+    phrase_tfidf_map = phrase_tfidf(phrases, comments)
     phrase_upvotes = compute_phrase_upvotes(phrases, comments)
 
     combined_scores = {}
@@ -293,7 +324,6 @@ def get_top_reddit_phrases():
 
         # Step 2: Clean all comments
         logger.info("Step (2/4): Cleaning comments...")
-        # for comment in tqdm(all_comments, desc="Cleaning comments"):
         for comment in all_comments:
             comment['text'] = clean_text(comment['text'])
         logger.info(f"Total comments extracted: {len(all_comments)}")
@@ -334,7 +364,7 @@ def get_top_reddit_phrases():
 
         # Step 4: Compute Top Phrases Using TF-IDF + Upvotes
         logger.info("Step (4/4): Calculating top phrases...")
-        top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n, ngram_limit=ngram_limit)
+        top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n)
         logger.info("Done.")
 
         result = []
