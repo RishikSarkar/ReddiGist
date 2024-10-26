@@ -253,10 +253,10 @@ def get_top_reddit_phrases():
             logger.error("No JSON payload provided")
             return jsonify({"error": "No JSON payload provided"}), 400
 
-        url = data.get('url')
-        if not url:
-            logger.error("URL is required")
-            return jsonify({"error": "URL is required"}), 400
+        urls = data.get('urls', [])
+        if not urls:
+            logger.error("URLs are required")
+            return jsonify({"error": "URLs are required"}), 400
 
         top_n = data.get('top_n', 3)
         custom_words_input = data.get('custom_words', '')
@@ -265,43 +265,51 @@ def get_top_reddit_phrases():
         apply_remove_lowercase = data.get('apply_remove_lowercase', True)
         print_scores = data.get('print_scores', False)
 
-        # Step 1: Fetch Reddit JSON
-        logger.info("Step (1/4): Fetching Reddit JSON data...")
+        # Step 1: Fetch Reddit JSON for all URLs
+        logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
+        all_comments = []
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url + '.json', headers=headers)
 
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch data from Reddit. Status code: {response.status_code}")
-            return jsonify({"error": f'Failed to fetch data from Reddit. Status code: {response.status_code}'}), 500
+        for url in urls:
+            try:
+                response = requests.get(url + '.json', headers=headers)
+                if response.status_code == 200:
+                    reddit_data = response.json()
+                    comments = []
+                    extract_all_comments(reddit_data, comments)
+                    all_comments.extend(comments)
+                else:
+                    logger.warning(f"Failed to fetch data from {url}. Status code: {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Error processing URL {url}: {str(e)}")
+                continue
 
-        reddit_data = response.json()
+        if not all_comments:
+            return jsonify({"error": "Failed to fetch comments from all provided URLs"}), 500
+
         logger.info("Done.")
 
-        # Step 2: Extract and Clean Comments
-        logger.info("Step (2/4): Extracting and cleaning comments...")
-        comments = []
-        extract_all_comments(reddit_data, comments)
-
-        for comment in tqdm(comments, desc="Cleaning comments"):
+        # Step 2: Clean all comments
+        logger.info("Step (2/4): Cleaning comments...")
+        for comment in tqdm(all_comments, desc="Cleaning comments"):
             comment['text'] = clean_text(comment['text'])
-        logger.info(f"Total comments extracted: {len(comments)}")
+        logger.info(f"Total comments extracted: {len(all_comments)}")
 
         # Step 3: Extract Common Phrases
         logger.info("Step (3/4): Extracting common phrases...")
-        min_occurrences = max(math.ceil(len(comments) / 40), 2)
+        min_occurrences = max(math.ceil(len(all_comments) / 40), 2)
         all_common_phrases = set()
         all_common_phrases_lower = set()
 
         while min_occurrences >= 2:
-            common_phrases = extract_common_phrases(comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
+            common_phrases = extract_common_phrases(all_comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
             common_phrases = post_process_ngrams(common_phrases)
-            print(common_phrases)
             common_phrases = final_post_process(common_phrases, custom_words)
-            print(common_phrases)
 
             if apply_remove_lowercase:
                 common_phrases = remove_all_lowercase_phrases(common_phrases)
-                print(common_phrases)
+            
+            print(common_phrases)
 
             new_phrases = set(phrase for phrase in common_phrases if phrase.lower() not in all_common_phrases_lower)
             all_common_phrases.update(new_phrases)
@@ -317,13 +325,13 @@ def get_top_reddit_phrases():
         if not all_common_phrases:
             logger.warning("No common phrases found. Returning all unique words.")
             all_words = set()
-            for comment in comments:
+            for comment in all_comments:
                 all_words.update(comment['text'].split())
             all_common_phrases = list(all_words)[:top_n]
 
         # Step 4: Compute Top Phrases Using TF-IDF + Upvotes
         logger.info("Step (4/4): Calculating top phrases...")
-        top_phrases = top_phrases_combined(all_common_phrases, comments, top_n=top_n, ngram_limit=ngram_limit)
+        top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n, ngram_limit=ngram_limit)
         logger.info("Done.")
 
         result = []
