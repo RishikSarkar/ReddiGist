@@ -13,6 +13,7 @@ import random
 import time
 import praw
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # from tqdm import tqdm
 # import spacy
@@ -444,21 +445,15 @@ def get_top_reddit_phrases():
         # Step 1: Fetch Reddit JSON for all URLs
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
-
-        for url in urls:
-            try:
-                reddit_data = get_reddit_data(url)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_url = {executor.submit(get_reddit_data, url): url for url in urls}
+            for future in as_completed(future_to_url):
+                url = future_to_url[future]
+                reddit_data = future.result()
                 if reddit_data and 'comments' in reddit_data:
                     all_comments.extend(reddit_data['comments'])
                 else:
-                    error_msg = f"Failed to fetch data from {url}"
-                    logger.warning(error_msg)
-                    return jsonify({"error": error_msg}), 503
-
-            except Exception as e:
-                error_msg = f"Error processing URL {url}: {str(e)}"
-                logger.warning(error_msg)
-                return jsonify({"error": error_msg}), 500
+                    logger.warning(f"Failed to fetch data from {url}")
 
         if not all_comments:
             return jsonify({"error": "No comments found in the provided URLs"}), 404
