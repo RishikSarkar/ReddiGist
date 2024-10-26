@@ -14,6 +14,8 @@ import time
 import praw
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
+from typing import Tuple, List, Set
 
 # from tqdm import tqdm
 # import spacy
@@ -117,28 +119,27 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
         return None
 
 # Helper functions
-def clean_text(text):
+@lru_cache(maxsize=1000)
+def tokenize_and_filter(text: str) -> Tuple[str, ...]:
+    """Cache tokenization results for identical text."""
+    tokens = word_tokenize(text)
+    return tuple(token for token in tokens)
+
+@lru_cache(maxsize=100)
+def clean_text_cached(text: str) -> str:
+    """Cache text cleaning results."""
     text = CLEAN_TEXT_REGEX.sub('', text)
     return MULTISPACE_REGEX.sub(' ', text).strip()
 
-def extract_all_comments(data, comments):
-    if isinstance(data, list):
-        for item in data:
-            extract_all_comments(item, comments)
-    elif isinstance(data, dict):
-        if 'body' in data and 'author' in data and data['author'] != 'AutoModerator':
-            comments.append({
-                'text': data['body'],
-                'score': data.get('score', 0)
-            })
-        for value in data.values():
-            extract_all_comments(value, comments)
+def clean_text(text):
+    return clean_text_cached(text)
 
 def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
+    """Extract common n-grams from comments."""
     ngram_list = []
     
     for comment in comments:
-        tokens = nltk.word_tokenize(comment['text'])
+        tokens = tokenize_and_filter(comment['text'])
         
         for n in range(2, ngram_limit + 1):
             for ngram in nltk.ngrams(tokens, n):
