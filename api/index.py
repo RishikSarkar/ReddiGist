@@ -13,7 +13,7 @@ from nltk.corpus import stopwords
 import traceback
 import os
 import logging
-import spacy
+# import spacy
 
 app = Flask(__name__)
 CORS(app)
@@ -33,10 +33,12 @@ nltk.download('stopwords', download_dir=nltk_data_dir)
 
 stop_words = set(stopwords.words('english'))
 
-nlp = spacy.load('en_core_web_sm')
+# nlp = spacy.load('en_core_web_sm')
 
-spacy_stop_words = nlp.Defaults.stop_words
-custom_stop_words = spacy_stop_words.union(ENGLISH_STOP_WORDS).union(set(stopwords.words('english')))
+# spacy_stop_words = nlp.Defaults.stop_words
+# custom_stop_words = spacy_stop_words.union(ENGLISH_STOP_WORDS).union(set(stopwords.words('english')))
+
+custom_stop_words = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
 
 # Helper functions
 def clean_text(text):
