@@ -64,20 +64,19 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
     """Get Reddit data using official API within free tier limits"""
     try:
         submission_id = url.split('/comments/')[1].split('/')[0]
-        
         submission = reddit.submission(id=submission_id)
-        submission.comments.replace_more(limit=32)
+        total_comments = submission.num_comments
+
+        if total_comments <= 500:
+            submission.comments.replace_more(limit=None)
+        else:
+            submission.comments.replace_more(limit=32)
 
         comments = []
         comment_count = 0
         start_time = time.time()
-        requests_made = 0
         
         for comment in submission.comments.list():
-            if requests_made >= 58:
-                time.sleep(2)
-                requests_made = 0
-            
             if time.time() - start_time > timeout:
                 logger.warning(f"Timeout reached for {url} after {comment_count} comments")
                 break
@@ -92,8 +91,6 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
                     'score': comment.score
                 })
                 comment_count += 1
-                
-            requests_made += 1
         
         if comments:
             logger.info(f"Successfully fetched {len(comments)} comments from {url}")

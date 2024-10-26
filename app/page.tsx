@@ -21,7 +21,6 @@ export default function Home() {
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
-    // Get the segment between the last two slashes
     return parts[parts.length - 2] || 'Unknown Post';
   };
 
