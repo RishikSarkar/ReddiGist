@@ -61,10 +61,22 @@ reddit = praw.Reddit(
     user_agent="ReddiGist/1.0"
 )
 
+SUBMISSION_ID_REGEX = re.compile(r'/comments/([^/]+)/')
+CLEAN_TEXT_REGEX = re.compile(r'[^a-zA-Z\s]')
+MULTISPACE_REGEX = re.compile(r'\s+')
+
+def get_submission_id(url):
+    match = SUBMISSION_ID_REGEX.search(url)
+    return match.group(1) if match else None
+
 def get_reddit_data(url, max_comments=10000, timeout=300):
     """Get Reddit data using official API within free tier limits"""
     try:
-        submission_id = url.split('/comments/')[1].split('/')[0]
+        submission_id = get_submission_id(url)
+        if not submission_id:
+            logger.warning(f"Invalid URL: {url}")
+            return None
+
         submission = reddit.submission(id=submission_id)
         total_comments = submission.num_comments
 
@@ -106,9 +118,8 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
 
 # Helper functions
 def clean_text(text):
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    text = ' '.join(text.split())
-    return text
+    text = CLEAN_TEXT_REGEX.sub('', text)
+    return MULTISPACE_REGEX.sub(' ', text).strip()
 
 def extract_all_comments(data, comments):
     if isinstance(data, list):
