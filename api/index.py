@@ -22,14 +22,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
+nltk.data.path.append(os.path.join(BASE_DIR, 'nltk_data'))
 
-nltk_data_dir = os.path.join(ROOT_DIR, '.venv', 'nltk_data')
-os.makedirs(nltk_data_dir, exist_ok=True)
-nltk.data.path.append(nltk_data_dir)
-# nltk.download('punkt', download_dir=nltk_data_dir, quiet=True)
-nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=True)
-nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
+# nltk_data_dir = os.path.join(ROOT_DIR, '.venv', 'nltk_data')
+# os.makedirs(nltk_data_dir, exist_ok=True)
+# nltk.data.path.append(nltk_data_dir)
+# # nltk.download('punkt', download_dir=nltk_data_dir, quiet=True)
+# nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=True)
+# nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
 
 # stop_words = set(stopwords.words('english'))
 
