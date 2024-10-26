@@ -301,24 +301,35 @@ def get_top_reddit_phrases():
         # Step 1: Fetch Reddit JSON for all URLs
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0'
+        }
 
         for url in urls:
             try:
-                response = requests.get(url + '.json', headers=headers)
+                response = requests.get(url + '.json', headers=headers, timeout=10)
                 if response.status_code == 200:
                     reddit_data = response.json()
                     comments = []
                     extract_all_comments(reddit_data, comments)
                     all_comments.extend(comments)
                 else:
-                    logger.warning(f"Failed to fetch data from {url}. Status code: {response.status_code}")
-            except Exception as e:
-                logger.warning(f"Error processing URL {url}: {str(e)}")
-                continue
+                    error_msg = f"Failed to fetch data from {url}. Status code: {response.status_code}"
+                    logger.warning(error_msg)
+                    return jsonify({"error": error_msg}), response.status_code
+            except requests.RequestException as e:
+                error_msg = f"Error processing URL {url}: {str(e)}"
+                logger.warning(error_msg)
+                return jsonify({"error": error_msg}), 500
 
         if not all_comments:
-            return jsonify({"error": "Failed to fetch comments from all provided URLs"}), 500
+            return jsonify({"error": "No comments found in the provided URLs"}), 404
 
         logger.info("Done.")
 
@@ -379,7 +390,7 @@ def get_top_reddit_phrases():
 
     except Exception as e:
         logger.error("An error occurred:", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
