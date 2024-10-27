@@ -17,14 +17,19 @@ interface PhraseResult {
 const MAX_THREADS = 5;
 const MAX_TOTAL_COMMENTS = 5000;
 
+const DEFAULT_TOP_N = '3';
+const DEFAULT_NGRAM_LIMIT = '5';
+const DEFAULT_REMOVE_LOWERCASE = true;
+const DEFAULT_PRINT_SCORES = false;
+
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
   const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>([]);
-  const [topN, setTopN] = useState('3');
+  const [topN, setTopN] = useState(DEFAULT_TOP_N);
   const [customWords, setCustomWords] = useState('');
-  const [ngramLimit, setNgramLimit] = useState('5');
-  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(true);
-  const [printScores, setPrintScores] = useState(false);
+  const [ngramLimit, setNgramLimit] = useState(DEFAULT_NGRAM_LIMIT);
+  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(DEFAULT_REMOVE_LOWERCASE);
+  const [printScores, setPrintScores] = useState(DEFAULT_PRINT_SCORES);
   const [result, setResult] = useState<PhraseResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
@@ -194,6 +199,18 @@ export default function Home() {
     }
   };
 
+  const handleClearUrls = () => {
+    setSelectedPosts([]);
+  };
+
+  const handleResetDefaults = () => {
+    setTopN(DEFAULT_TOP_N);
+    setNgramLimit(DEFAULT_NGRAM_LIMIT);
+    setCustomWords('');
+    setApplyRemoveLowercase(DEFAULT_REMOVE_LOWERCASE);
+    setPrintScores(DEFAULT_PRINT_SCORES);
+  };
+
   return (
     <main className="min-h-screen bg-[#0e1113] text-white p-8">
       <div className="max-w-2xl mx-auto">
@@ -232,34 +249,46 @@ export default function Home() {
 
           {/* Selected Posts Display */}
           {selectedPosts.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 justify-center">
-              {selectedPosts.map((post) => (
-                <div
-                  key={post.url}
-                  className="flex items-center gap-2 bg-[#272729] px-3 py-1 rounded-full border border-[#333D42]"
-                >
-                  <span className="text-sm">
-                    {post.title}
-                    {post.numComments && (
-                      <span className="text-gray-400 ml-1">
-                        ({post.numComments.toLocaleString()} comments)
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePost(post.url)}
-                    className="text-gray-400 hover:text-[#D93900]"
+            <>
+              <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                {selectedPosts.map((post) => (
+                  <div
+                    key={post.url}
+                    className="flex items-center gap-2 bg-[#272729] px-3 py-1 rounded-full border border-[#333D42]"
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <span className="text-sm">
+                      {post.title}
+                      {post.numComments && (
+                        <span className="text-gray-400 ml-1">
+                          ({post.numComments.toLocaleString()} comments)
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePost(post.url)}
+                      className="text-gray-400 hover:text-[#D93900]"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-center gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={handleClearUrls}
+                  className="text-sm text-gray-400 hover:text-[#D93900] transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+            </>
           )}
 
           {/* Settings Section */}
           <div className="bg-[#1A1A1B] p-6 rounded-lg space-y-4">
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="topN" className="block mb-2 font-semibold">
@@ -327,7 +356,7 @@ export default function Home() {
 
             <div>
               <label htmlFor="customWords" className="block mb-2 font-semibold">
-                Custom Words to Exclude (Case-Insensitive)
+                Custom Words to Exclude
               </label>
               <input
                 type="text"
@@ -360,6 +389,16 @@ export default function Home() {
                 />
                 <label htmlFor="printScores">Show Statistics</label>
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleResetDefaults}
+                className="text-sm text-gray-400 hover:text-[#D93900] transition-colors"
+              >
+                Reset to Defaults
+              </button>
             </div>
           </div>
 
