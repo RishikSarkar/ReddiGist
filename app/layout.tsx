@@ -1,7 +1,11 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
+import { IBM_Plex_Sans } from 'next/font/google'
 
-const inter = Inter({ subsets: ['latin'] })
+const ibmPlexSans = IBM_Plex_Sans({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+})
 
 export const metadata = {
   title: 'ReddiGist',
@@ -25,7 +29,7 @@ export default function RootLayout({
       <head>
         <link rel="icon" href="data:," />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={ibmPlexSans.className}>{children}</body>
     </html>
   )
 }
