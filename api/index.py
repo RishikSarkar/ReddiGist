@@ -66,6 +66,9 @@ reddit = praw.Reddit(
 SUBMISSION_ID_REGEX = re.compile(r'/comments/([^/]+)/')
 CLEAN_TEXT_REGEX = re.compile(r'[^a-zA-Z\s]')
 MULTISPACE_REGEX = re.compile(r'\s+')
+NUMERIC_START_REGEX = re.compile(r'^\d+')
+CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$', re.IGNORECASE)
+URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -132,7 +135,10 @@ def clean_text_cached(text: str) -> str:
     return MULTISPACE_REGEX.sub(' ', text).strip()
 
 def clean_text(text):
-    return clean_text_cached(text)
+    """Clean text by removing URLs, non-letters, and extra spaces."""
+    text = URL_REGEX.sub('', text)
+    text = CLEAN_TEXT_REGEX.sub('', text)
+    return MULTISPACE_REGEX.sub(' ', text).strip()
 
 def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
     """Extract common n-grams from comments."""
@@ -169,22 +175,23 @@ def remove_substrings(phrases):
     return final_phrases
 
 def remove_grammar(phrases):
+    """Remove grammar-related words from phrases."""
     grammar = {'a', 'an', 'the', 'i'}
-    processed_phrases = []
+    processed_phrases = set()
 
     for phrase in phrases:
         words = phrase.split()
 
-        if words and re.match(r'^\d+$', words[0]):
+        if words and NUMERIC_START_REGEX.match(words[0]):
             words = words[1:]
 
         if words and words[0].lower() in grammar:
             words = words[1:]
-
         if words and words[-1].lower() in grammar:
             words = words[:-1]
 
-        processed_phrases.append(' '.join(words))
+        if words:
+            processed_phrases.add(' '.join(words))
 
     return processed_phrases
 
@@ -393,10 +400,8 @@ def is_substring_of_any(phrase, other_phrases):
     return False
 
 def is_incomplete_phrase(phrase):
-    """Check if phrase ends with common connecting words"""
-    connecting_words = {'and', 'or', 'of', 'the', 'in', 'on', 'at', 'to', 'for', 'with'}
-    words = phrase.split()
-    return (len(words) > 0 and words[-1].lower() in connecting_words)
+    """Check if phrase ends with connecting words using regex."""
+    return bool(CONNECTING_WORDS_REGEX.search(phrase))
 
 def top_phrases_combined(phrases, comments, top_n=10):
     """Get top phrases using position-based scoring with substring deduplication"""
