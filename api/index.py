@@ -547,7 +547,10 @@ def get_top_reddit_phrases():
         # Step 3: Extract Common Phrases
         extract_start = time.time()
         logger.info("Step (3/4): Extracting common phrases...")
-        min_occurrences = max(math.ceil(len(all_comments) / 40), 2)
+        min_occurrences = min(
+            30,
+            max(math.ceil(len(all_comments) / 40), 2)
+        )
         all_common_phrases = set()
         all_common_phrases_lower = set()
 

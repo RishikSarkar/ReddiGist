@@ -120,7 +120,7 @@ export default function Home() {
   const calculateMaxTime = (totalComments: number, topN: string, ngramLimit: string): number => {
     const maxPossibleTime = 60;
     const minTime = 15;
-    const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime;
+    const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime * 0.2;
     const nFactor = Math.log2(parseInt(topN) + 1) * 0.5;
     const ngramFactor = (1 + parseInt(ngramLimit) / 10);
     
@@ -142,7 +142,6 @@ export default function Home() {
     const calculatedMaxTime = calculateMaxTime(totalComments, topN, ngramLimit);
     setMaxTime(calculatedMaxTime);
 
-    // Progress bar update interval (10 times per second)
     const interval = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
@@ -181,7 +180,7 @@ export default function Home() {
       if (data.warning) {
         setWarning(data.warning);
       }
-      setProgress(100);  // Ensure progress hits 100% when complete
+      setProgress(100);
     } catch (error) {
       console.error('Error:', error);
       setResult([]);
