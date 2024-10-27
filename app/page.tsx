@@ -15,6 +15,7 @@ interface PhraseResult {
 }
 
 const MAX_THREADS = 5;
+const MAX_TOTAL_COMMENTS = 5000;
 
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
@@ -61,11 +62,7 @@ export default function Home() {
     e.preventDefault();
     const submittedUrl = currentUrl;
     if (submittedUrl && !selectedPosts.some(post => post.url === submittedUrl)) {
-      if (selectedPosts.length >= MAX_THREADS) {
-        alert(`Maximum ${MAX_THREADS} threads allowed to prevent timeout issues.`);
-        return;
-      }
-
+      const currentTotalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
       setIsLoadingPost(true);
       
       try {
@@ -82,6 +79,14 @@ export default function Home() {
         }
 
         const data = await response.json();
+        
+        if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
+          setIsLoadingPost(false);
+          setCurrentUrl(submittedUrl);
+          alert(`Adding this thread would exceed the maximum total comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()} comments). Please remove some threads to make space.`);
+          return;
+        }
+
         const newPost: RedditPost = {
           url: submittedUrl,
           title: data.title,
@@ -161,7 +166,7 @@ export default function Home() {
             <label htmlFor="url" className="block mb-2 font-semibold">
               Add Reddit URLs
               <span className="text-sm text-gray-400 ml-2">
-                (Max {MAX_THREADS} threads)
+                ({selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0).toLocaleString()} / {MAX_TOTAL_COMMENTS.toLocaleString()} comments)
               </span>
             </label>
             <div className="flex gap-2">
