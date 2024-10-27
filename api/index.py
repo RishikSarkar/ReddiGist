@@ -1,27 +1,19 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import requests
+import os
 import re
 import math
-from collections import Counter, defaultdict
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-import os
-import logging
-import random
 import time
-import praw
-from dotenv import load_dotenv
+import logging
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from typing import Tuple, List, Set
-
-# from tqdm import tqdm
-# import spacy
-# from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
-# import numpy as np
-# import traceback
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import praw
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -34,20 +26,6 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 nltk.data.path.append(os.path.join(BASE_DIR, 'nltk_data'))
 
-# nltk_data_dir = os.path.join(ROOT_DIR, '.venv', 'nltk_data')
-# os.makedirs(nltk_data_dir, exist_ok=True)
-# nltk.data.path.append(nltk_data_dir)
-# # nltk.download('punkt', download_dir=nltk_data_dir, quiet=True)
-# nltk.download('punkt_tab', download_dir=nltk_data_dir, quiet=True)
-# nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
-
-# stop_words = set(stopwords.words('english'))
-
-# nlp = spacy.load('en_core_web_sm')
-
-# spacy_stop_words = nlp.Defaults.stop_words
-# custom_stop_words = spacy_stop_words.union(ENGLISH_STOP_WORDS).union(set(stopwords.words('english')))
-# custom_stop_words = set(stopwords.words('english')).union(ENGLISH_STOP_WORDS)
 custom_stop_words = set(stopwords.words('english'))
 
 USER_AGENTS = [
@@ -132,12 +110,6 @@ def tokenize_and_filter(text: str) -> Tuple[str, ...]:
     tokens = word_tokenize(text)
     return tuple(token for token in tokens)
 
-@lru_cache(maxsize=100)
-def clean_text_cached(text: str) -> str:
-    """Cache text cleaning results."""
-    text = CLEAN_TEXT_REGEX.sub('', text)
-    return MULTISPACE_REGEX.sub(' ', text).strip()
-
 def clean_text(text):
     """Clean text by removing URLs, non-letters, and extra spaces."""
     text = URL_REGEX.sub('', text)
@@ -168,49 +140,49 @@ def is_meaningful_phrase(phrase):
     capitalized_count = sum(1 for word in phrase if word[0].isupper())
     return capitalized_count >= 2
 
-def remove_substrings(phrases):
-    final_phrases = set()
-    sorted_phrases = sorted(phrases, key=lambda x: len(x), reverse=True)
+# def remove_substrings(phrases):
+#     final_phrases = set()
+#     sorted_phrases = sorted(phrases, key=lambda x: len(x), reverse=True)
     
-    for phrase in sorted_phrases:
-        if not any(phrase.lower() in other.lower() for other in final_phrases):
-            final_phrases.add(phrase)
+#     for phrase in sorted_phrases:
+#         if not any(phrase.lower() in other.lower() for other in final_phrases):
+#             final_phrases.add(phrase)
     
-    return final_phrases
+#     return final_phrases
 
-def remove_grammar(phrases):
-    """Remove grammar-related words from phrases."""
-    grammar = {'a', 'an', 'the', 'i'}
-    processed_phrases = set()
+# def remove_grammar(phrases):
+#     """Remove grammar-related words from phrases."""
+#     grammar = {'a', 'an', 'the', 'i'}
+#     processed_phrases = set()
 
-    for phrase in phrases:
-        words = phrase.split()
+#     for phrase in phrases:
+#         words = phrase.split()
 
-        if words and NUMERIC_START_REGEX.match(words[0]):
-            words = words[1:]
+#         if words and NUMERIC_START_REGEX.match(words[0]):
+#             words = words[1:]
 
-        if words and words[0].lower() in grammar:
-            words = words[1:]
-        if words and words[-1].lower() in grammar:
-            words = words[:-1]
+#         if words and words[0].lower() in grammar:
+#             words = words[1:]
+#         if words and words[-1].lower() in grammar:
+#             words = words[:-1]
 
-        if words:
-            processed_phrases.add(' '.join(words))
+#         if words:
+#             processed_phrases.add(' '.join(words))
 
-    return processed_phrases
+#     return processed_phrases
 
-def remove_custom_words(phrase, custom_words):
-    words = phrase.split()
-    cleaned_words = [word for word in words if word.lower() not in custom_words]
-    return ' '.join(cleaned_words)
+# def remove_custom_words(phrase, custom_words):
+#     words = phrase.split()
+#     cleaned_words = [word for word in words if word.lower() not in custom_words]
+#     return ' '.join(cleaned_words)
 
-def remove_common_only_phrases(phrases, custom_stop_words):
-    filtered_phrases = []
-    for phrase in phrases:
-        words = phrase.split()
-        if not all(word.lower() in custom_stop_words for word in words) and len(words) > 2:
-            filtered_phrases.append(phrase)
-    return filtered_phrases
+# def remove_common_only_phrases(phrases, custom_stop_words):
+#     filtered_phrases = []
+#     for phrase in phrases:
+#         words = phrase.split()
+#         if not all(word.lower() in custom_stop_words for word in words) and len(words) > 2:
+#             filtered_phrases.append(phrase)
+#     return filtered_phrases
 
 def remove_all_lowercase_phrases(phrases):
     articles_and_common_words = {
@@ -252,51 +224,93 @@ def post_process_ngrams(phrases):
 
     return final_phrases
 
-def combine_similar_phrases(phrases, similarity_threshold=3):
-    combined_phrases = list(phrases)
-    merged = True
+# def combine_similar_phrases(phrases, similarity_threshold=3):
+#     combined_phrases = list(phrases)
+#     merged = True
     
-    while merged:
-        merged = False
-        new_phrases = []
-        skip = set()
+#     while merged:
+#         merged = False
+#         new_phrases = []
+#         skip = set()
 
-        for i, phrase in enumerate(combined_phrases):
-            if i in skip:
-                continue
+#         for i, phrase in enumerate(combined_phrases):
+#             if i in skip:
+#                 continue
 
-            phrase_words = phrase.split()
-            combined_phrase = phrase
+#             phrase_words = phrase.split()
+#             combined_phrase = phrase
 
-            for j, other_phrase in enumerate(combined_phrases):
-                if i != j and j not in skip:
-                    other_phrase_words = other_phrase.split()
+#             for j, other_phrase in enumerate(combined_phrases):
+#                 if i != j and j not in skip:
+#                     other_phrase_words = other_phrase.split()
 
-                    if phrase_words[:similarity_threshold] == other_phrase_words[:similarity_threshold]:
-                        combined_phrase = ' '.join(phrase_words + other_phrase_words[similarity_threshold:])
-                        skip.add(j)
-                        merged = True
-                    elif phrase_words[-similarity_threshold:] == other_phrase_words[-similarity_threshold:]:
-                        combined_phrase = ' '.join(phrase_words[:-similarity_threshold] + other_phrase_words)
-                        skip.add(j)
-                        merged = True
-                    else:
-                        combined_phrase = phrase
+#                     if phrase_words[:similarity_threshold] == other_phrase_words[:similarity_threshold]:
+#                         combined_phrase = ' '.join(phrase_words + other_phrase_words[similarity_threshold:])
+#                         skip.add(j)
+#                         merged = True
+#                     elif phrase_words[-similarity_threshold:] == other_phrase_words[-similarity_threshold:]:
+#                         combined_phrase = ' '.join(phrase_words[:-similarity_threshold] + other_phrase_words)
+#                         skip.add(j)
+#                         merged = True
+#                     else:
+#                         combined_phrase = phrase
 
-            new_phrases.append(combined_phrase)
+#             new_phrases.append(combined_phrase)
 
-        combined_phrases = new_phrases
+#         combined_phrases = new_phrases
 
-    return set(combined_phrases)
+#     return set(combined_phrases)
+
+def process_phrases_in_single_pass(phrases, custom_words, custom_stop_words):
+    """Combine all filtering steps into a single efficient pass"""
+    processed_phrases = set()
+    seen_phrases_lower = set()
+    grammar_words = {'a', 'an', 'the', 'i'}
+    articles_and_common_words = {
+        'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
+        'For', 'By', 'To', 'From', 'With', 'About', 'Over', 'Under', 'Before', 'After', 
+        'I', 'Ive', 'He', 'Hes', 'She', 'Shes', 'It', 'Its', 'They', 'Theyve', 'We', 'Weve', 
+        'This', 'That', 'These', 'Those', 'Then', 'Now', 'Here', 'There', 'What', 'When', 
+        'Where', 'Why', 'How', 'Who', 'Which'
+    }
+    
+    for phrase in sorted(phrases, key=len, reverse=True):
+        phrase_lower = phrase.lower()
+        
+        if phrase_lower in seen_phrases_lower:
+            continue
+            
+        words = phrase.split()
+        
+        if (len(words) <= 2 or
+            any(word.lower() in custom_words for word in words) or
+            all(word.lower() in custom_stop_words for word in words) or
+            is_incomplete_phrase(phrase) or
+            any(phrase_lower in other.lower() for other in processed_phrases)):
+            continue
+        
+        capitalized_words = [word for word in words if word[0].isupper() and word not in articles_and_common_words]
+        if len(capitalized_words) < 2:
+            continue
+            
+        if words and NUMERIC_START_REGEX.match(words[0]):
+            words = words[1:]
+        if words and words[0].lower() in grammar_words:
+            words = words[1:]
+        if words and words[-1].lower() in grammar_words:
+            words = words[:-1]
+            
+        if words and len(words) >= 2:
+            cleaned_phrase = ' '.join(words)
+            processed_phrases.add(cleaned_phrase)
+            seen_phrases_lower.add(cleaned_phrase.lower())
+            
+    return processed_phrases
 
 def final_post_process(phrases, custom_words):
-    phrases = remove_substrings(phrases)
-    phrases = [remove_custom_words(phrase, custom_words) for phrase in phrases]
-    phrases = combine_similar_phrases(phrases)
-    phrases = remove_common_only_phrases(phrases, custom_stop_words)
-    phrases = remove_grammar(phrases)
-    
-    return phrases
+    """Single pass processing for all phrases"""
+    string_phrases = [tuple_to_string(phrase) if isinstance(phrase, tuple) else phrase for phrase in phrases]
+    return process_phrases_in_single_pass(string_phrases, custom_words, custom_stop_words)
 
 # def phrase_tfidf(phrases, comments, ngram_limit=5):
 #     comment_texts = [comment['text'] for comment in comments]
