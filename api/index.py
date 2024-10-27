@@ -14,6 +14,7 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import praw
 from dotenv import load_dotenv
+import psutil
 
 load_dotenv()
 
@@ -466,10 +467,16 @@ def top_phrases_combined(phrases, comments, top_n=10):
     return [(phrase, phrase_scores[phrase], total_upvotes[phrase]) 
             for phrase in final_phrases[:top_n]]
 
+def get_memory_usage():
+    """Get current memory usage in MB"""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / 1024 / 1024
+
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
     try:
-        start_time = time.time()
+        total_start_time = time.time()
+        memory_start = get_memory_usage()
         
         data = request.json
         if not data:
@@ -486,7 +493,8 @@ def get_top_reddit_phrases():
         apply_remove_lowercase = data.get('apply_remove_lowercase', True)
         print_scores = data.get('print_scores', False)
 
-        # Step 1: Fetch Reddit JSON for all URLs
+        # Step 1: Fetch Reddit JSON
+        fetch_start = time.time()
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
         total_comments = 0
@@ -494,7 +502,7 @@ def get_top_reddit_phrases():
         with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_url = {executor.submit(get_reddit_data, url): url for url in urls}
             for future in as_completed(future_to_url):
-                if time.time() - start_time > VERCEL_TIMEOUT:
+                if time.time() - total_start_time > VERCEL_TIMEOUT:
                     logger.warning("Approaching Vercel timeout limit, processing with current comments")
                     break
                     
@@ -515,6 +523,9 @@ def get_top_reddit_phrases():
                 except Exception as e:
                     logger.warning(f"Error processing {url}: {str(e)}")
                     continue
+        
+        fetch_time = time.time() - fetch_start
+        logger.info(f"Step 1 - Fetch time: {fetch_time:.2f}s, Comments: {len(all_comments)}")
 
         if not all_comments:
             return jsonify({"error": "No comments found in the provided URLs"}), 404
@@ -527,26 +538,38 @@ def get_top_reddit_phrases():
 
         logger.info("Done.")
 
-        # Step 2: Clean all comments
+        # Step 2: Clean Comments
+        clean_start = time.time()
         logger.info("Step (2/4): Cleaning comments...")
         for comment in all_comments:
             comment['text'] = clean_text(comment['text'])
-        logger.info(f"Total comments extracted: {len(all_comments)}")
+        clean_time = time.time() - clean_start
+        logger.info(f"Step 2 - Clean time: {clean_time:.2f}s")
 
         # Step 3: Extract Common Phrases
+        extract_start = time.time()
         logger.info("Step (3/4): Extracting common phrases...")
         min_occurrences = max(math.ceil(len(all_comments) / 40), 2)
         all_common_phrases = set()
         all_common_phrases_lower = set()
 
         while min_occurrences >= 2:
+            phrases_start = time.time()
             common_phrases = extract_common_phrases(all_comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
+            extract_time = time.time() - phrases_start
+            
+            post_start = time.time()
             common_phrases = post_process_ngrams(common_phrases)
             common_phrases = final_post_process(common_phrases, custom_words)
-
             if apply_remove_lowercase:
                 common_phrases = remove_all_lowercase_phrases(common_phrases)
+            post_time = time.time() - post_start
             
+            logger.info(f"  Iteration (min_occurrences={min_occurrences}):")
+            logger.info(f"    - Extract time: {extract_time:.2f}s")
+            logger.info(f"    - Post-process time: {post_time:.2f}s")
+            logger.info(f"    - Phrases found: {len(common_phrases)}")
+
             clean_phrases = set()
             seen_phrases_lower = set()
             
@@ -583,10 +606,28 @@ def get_top_reddit_phrases():
                 all_words.update(comment['text'].split())
             all_common_phrases = list(all_words)[:top_n]
 
-        # Step 4: Compute Top Phrases Using position and upvote-based scoring
+        total_extract_time = time.time() - extract_start
+        logger.info(f"Step 3 - Total extraction time: {total_extract_time:.2f}s")
+
+        # Step 4: Score and Rank
+        score_start = time.time()
         logger.info("Step (4/4): Calculating top phrases...")
         top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n)
-        logger.info("Done.")
+        score_time = time.time() - score_start
+        logger.info(f"Step 4 - Scoring time: {score_time:.2f}s")
+
+        # Final stats
+        total_time = time.time() - total_start_time
+        memory_used = get_memory_usage() - memory_start
+        
+        logger.info("\nPerformance Summary:")
+        logger.info(f"Total time: {total_time:.2f}s")
+        logger.info(f"  - Fetch: {fetch_time:.2f}s ({(fetch_time/total_time)*100:.1f}%)")
+        logger.info(f"  - Clean: {clean_time:.2f}s ({(clean_time/total_time)*100:.1f}%)")
+        logger.info(f"  - Extract: {total_extract_time:.2f}s ({(total_extract_time/total_time)*100:.1f}%)")
+        logger.info(f"  - Score: {score_time:.2f}s ({(score_time/total_time)*100:.1f}%)")
+        logger.info(f"Memory usage: {memory_used:.1f}MB")
+        logger.info(f"Comments processed: {len(all_comments)}")
 
         result = []
         for idx, (phrase, score, upvotes) in enumerate(top_phrases, 1):
