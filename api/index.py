@@ -14,6 +14,7 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import praw
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -52,7 +53,13 @@ MAX_COMMENTS_PER_THREAD = 1000
 MAX_TOTAL_COMMENTS = 5000
 VERCEL_TIMEOUT = 10
 
-phrases_found = 0
+progress_store = {}
+
+def update_progress(request_id, count):
+    progress_store[request_id] = {
+        'count': count,
+        'timestamp': datetime.now()
+    }
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -624,8 +631,16 @@ def get_top_reddit_phrases():
 
 @app.route('/api/phrases-count', methods=['GET'])
 def get_phrases_count():
-    global phrases_found
-    return jsonify({"count": phrases_found})
+    request_id = request.args.get('request_id')
+    if request_id and request_id in progress_store:
+        return jsonify({"count": progress_store[request_id]['count']})
+    return jsonify({"count": 0})
+
+def cleanup_progress():
+    cutoff = datetime.now() - timedelta(minutes=5)
+    expired = [k for k, v in progress_store.items() if v['timestamp'] < cutoff]
+    for k in expired:
+        progress_store.pop(k)
 
 if __name__ == '__main__':
     app.run(debug=True)
