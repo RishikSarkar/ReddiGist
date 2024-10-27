@@ -6,7 +6,7 @@ import logging
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
-from typing import Tuple, List, Set
+from typing import Tuple
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import nltk
@@ -410,10 +410,11 @@ def compute_phrase_scores(phrases, comments):
     return phrase_scores
 
 def is_substring_of_any(phrase, other_phrases):
-    """Check if phrase is a substring of any other phrase"""
+    """Check if phrase is a substring of any other phrase or contains any other phrase"""
     phrase_lower = phrase.lower()
     for other in other_phrases:
-        if phrase_lower in other.lower() and phrase_lower != other.lower():
+        other_lower = other.lower()
+        if (phrase_lower in other_lower or other_lower in phrase_lower) and phrase_lower != other_lower:
             return True
     return False
 
@@ -446,7 +447,6 @@ def top_phrases_combined(phrases, comments, top_n=10):
                 break
     
     if len(final_phrases) < top_n:
-        remaining_needed = top_n - len(final_phrases)
         for phrase, score in sorted_phrases:
             if (phrase not in final_phrases and 
                 not is_incomplete_phrase(phrase) and
@@ -455,8 +455,7 @@ def top_phrases_combined(phrases, comments, top_n=10):
                 final_phrases.append(phrase)
                 seen_phrases.add(phrase.lower())
                 
-                remaining_needed -= 1
-                if remaining_needed <= 0:
+                if len(final_phrases) >= top_n:
                     break
 
     return [(phrase, phrase_scores[phrase]) for phrase in final_phrases[:top_n]]
