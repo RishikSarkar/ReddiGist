@@ -31,6 +31,9 @@ export default function Home() {
   const [loadingDots, setLoadingDots] = useState(0);
   const [isLoadingPost, setIsLoadingPost] = useState(false);
   const [loadingPostDots, setLoadingPostDots] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [maxTime, setMaxTime] = useState(60);
+  const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -114,6 +117,18 @@ export default function Home() {
     setSelectedPosts(selectedPosts.filter(post => post.url !== urlToRemove));
   };
 
+  const calculateMaxTime = (totalComments: number, topN: string, ngramLimit: string): number => {
+    const maxPossibleTime = 60;
+    const minTime = 15;
+    const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime;
+    const nFactor = Math.log2(parseInt(topN) + 1) * 0.5;
+    const ngramFactor = (1 + parseInt(ngramLimit) / 10);
+    
+    const calculatedTime = baseTime * nFactor * ngramFactor;
+    
+    return Math.min(maxPossibleTime, Math.max(minTime, Math.ceil(calculatedTime)));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedPosts.length === 0) return;
@@ -121,6 +136,24 @@ export default function Home() {
     setIsLoading(true);
     setResult([]);
     setWarning(null);
+    setProgress(0);
+
+    const totalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
+    const calculatedMaxTime = calculateMaxTime(totalComments, topN, ngramLimit);
+    setMaxTime(calculatedMaxTime);
+
+    // Progress bar update interval (10 times per second)
+    const interval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          return 100;
+        }
+        return prev + (100 / (calculatedMaxTime * 10));
+      });
+    }, 100);
+
+    setProgressInterval(interval);
 
     try {
       const response = await fetch('/api/top_phrases', {
@@ -148,11 +181,16 @@ export default function Home() {
       if (data.warning) {
         setWarning(data.warning);
       }
+      setProgress(100);  // Ensure progress hits 100% when complete
     } catch (error) {
       console.error('Error:', error);
       setResult([]);
       setWarning(error instanceof Error ? error.message : 'An error occurred while fetching the data.');
     } finally {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        setProgressInterval(null);
+      }
       setIsLoading(false);
     }
   };
@@ -333,6 +371,21 @@ export default function Home() {
           >
             {isLoading ? `Gisting${'.'.repeat(loadingDots)}` : 'Gist'}
           </button>
+
+          {/* Progress Bar */}
+          {isLoading && (
+            <div className="mt-4">
+              <div className="w-full bg-[#272729] rounded-full h-2.5 mb-1">
+                <div 
+                  className="bg-[#D93900] h-2.5 rounded-full transition-all duration-300 ease-linear"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="text-xs text-gray-400 text-right">
+                {Math.round(progress)}%
+              </div>
+            </div>
+          )}
         </form>
 
         {/* Results Section */}

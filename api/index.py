@@ -49,7 +49,6 @@ NUMERIC_START_REGEX = re.compile(r'^\d+')
 CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$', re.IGNORECASE)
 URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
-MAX_COMMENTS_PER_THREAD = 1000
 MAX_TOTAL_COMMENTS = 5000
 VERCEL_TIMEOUT = 10
 
@@ -509,7 +508,7 @@ def get_top_reddit_phrases():
                 try:
                     reddit_data = future.result(timeout=2)
                     if reddit_data and 'comments' in reddit_data:
-                        new_comments = reddit_data['comments'][:MAX_COMMENTS_PER_THREAD]
+                        new_comments = reddit_data['comments']
                         remaining_space = MAX_TOTAL_COMMENTS - total_comments
                         if remaining_space > 0:
                             new_comments = new_comments[:remaining_space]
