@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 interface RedditPost {
   url: string;
   title: string;
+  numComments?: number;
 }
 
 interface PhraseResult {
@@ -27,6 +28,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState(0);
+  const [isLoadingPost, setIsLoadingPost] = useState(false);
+  const [loadingPostDots, setLoadingPostDots] = useState(0);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -37,29 +40,67 @@ export default function Home() {
       }, 500);
     }
 
+    if (isLoadingPost) {
+      interval = setInterval(() => {
+        setLoadingPostDots(prev => (prev + 1) % 4);
+        setCurrentUrl(`Retrieving thread information${'.'.repeat(loadingPostDots)}`);
+      }, 500);
+    }
+
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoading]);
+  }, [isLoading, isLoadingPost]);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
     return parts[parts.length - 2] || 'Unknown Post';
   };
 
-  const handleAddUrl = (e: React.FormEvent) => {
+  const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUrl && !selectedPosts.some(post => post.url === currentUrl)) {
+    const submittedUrl = currentUrl;
+    if (submittedUrl && !selectedPosts.some(post => post.url === submittedUrl)) {
       if (selectedPosts.length >= MAX_THREADS) {
         alert(`Maximum ${MAX_THREADS} threads allowed to prevent timeout issues.`);
         return;
       }
-      const newPost: RedditPost = {
-        url: currentUrl,
-        title: extractTitleFromUrl(currentUrl)
-      };
-      setSelectedPosts([...selectedPosts, newPost]);
-      setCurrentUrl('');
+
+      setIsLoadingPost(true);
+      
+      try {
+        const response = await fetch('/api/post_info', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: submittedUrl }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch post info');
+        }
+
+        const data = await response.json();
+        const newPost: RedditPost = {
+          url: submittedUrl,
+          title: data.title,
+          numComments: data.numComments
+        };
+
+        setSelectedPosts([...selectedPosts, newPost]);
+        setCurrentUrl('');
+      } catch (error) {
+        console.error('Error fetching post info:', error);
+        const newPost: RedditPost = {
+          url: submittedUrl,
+          title: extractTitleFromUrl(submittedUrl)
+        };
+        setSelectedPosts([...selectedPosts, newPost]);
+        setCurrentUrl('');
+      } finally {
+        setIsLoadingPost(false);
+      }
     }
   };
 
@@ -127,15 +168,19 @@ export default function Home() {
               <input
                 type="text"
                 id="url"
-                value={currentUrl}
+                value={isLoadingPost ? `Retrieving thread information${'.'.repeat(loadingPostDots)}` : currentUrl}
                 onChange={(e) => setCurrentUrl(e.target.value)}
-                className="flex-1 p-2 border border-[#333D42] rounded bg-[#272729] text-white focus:border-[#D93900] focus:outline-none"
+                className={`flex-1 p-2 border border-[#333D42] rounded bg-[#272729] focus:border-[#D93900] focus:outline-none ${
+                  isLoadingPost ? 'text-gray-400' : 'text-white'
+                }`}
                 placeholder="https://www.reddit.com/r/AskReddit/comments/example"
+                disabled={isLoadingPost}
               />
               <button
                 type="button"
                 onClick={handleAddUrl}
-                className="bg-[#115BCA] text-white py-2 px-4 rounded hover:bg-[#1e6fdd] transition-colors"
+                className="bg-[#115BCA] text-white py-2 px-4 rounded hover:bg-[#1e6fdd] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoadingPost || !currentUrl}
               >
                 Add
               </button>
@@ -150,7 +195,14 @@ export default function Home() {
                   key={post.url}
                   className="flex items-center gap-2 bg-[#272729] px-3 py-1 rounded-full border border-[#333D42]"
                 >
-                  <span className="text-sm">{post.title}</span>
+                  <span className="text-sm">
+                    {post.title}
+                    {post.numComments && (
+                      <span className="text-gray-400 ml-1">
+                        ({post.numComments.toLocaleString()} comments)
+                      </span>
+                    )}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemovePost(post.url)}

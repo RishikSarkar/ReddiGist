@@ -104,7 +104,6 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
         logger.error(f"Error fetching Reddit data: {str(e)}")
         return None
 
-# Helper functions
 @lru_cache(maxsize=1000)
 def tokenize_and_filter(text: str) -> Tuple[str, ...]:
     """Cache tokenization results for identical text."""
@@ -616,7 +615,6 @@ def get_top_reddit_phrases():
         score_time = time.time() - score_start
         logger.info(f"Step 4 - Scoring time: {score_time:.2f}s")
 
-        # Final stats
         total_time = time.time() - total_start_time
         memory_used = get_memory_usage() - memory_start
         
@@ -656,6 +654,28 @@ def get_top_reddit_phrases():
             error_msg = "Request timed out. Try reducing the number of threads or selecting threads with fewer comments."
         logger.error("An error occurred:", exc_info=True)
         return jsonify({"error": error_msg}), 500
+
+@app.route('/api/post_info', methods=['POST'])
+def get_post_info():
+    try:
+        data = request.json
+        if not data or 'url' not in data:
+            return jsonify({"error": "URL is required"}), 400
+
+        submission_id = get_submission_id(data['url'])
+        if not submission_id:
+            return jsonify({"error": "Invalid Reddit URL"}), 400
+
+        submission = reddit.submission(id=submission_id)
+        
+        return jsonify({
+            "title": submission.title,
+            "numComments": submission.num_comments
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching post info: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
