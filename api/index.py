@@ -70,6 +70,10 @@ NUMERIC_START_REGEX = re.compile(r'^\d+')
 CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$', re.IGNORECASE)
 URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
+MAX_COMMENTS_PER_THREAD = 10000
+MAX_TOTAL_COMMENTS = 50000
+MAX_PHRASE_LENGTH = 100
+
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
     return match.group(1) if match else None
@@ -464,18 +468,27 @@ def get_top_reddit_phrases():
         # Step 1: Fetch Reddit JSON for all URLs
         logger.info(f"Step (1/4): Fetching Reddit JSON data for {len(urls)} URLs...")
         all_comments = []
+        total_comments = 0
+        
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_url = {executor.submit(get_reddit_data, url): url for url in urls}
             for future in as_completed(future_to_url):
                 url = future_to_url[future]
                 reddit_data = future.result()
                 if reddit_data and 'comments' in reddit_data:
-                    all_comments.extend(reddit_data['comments'])
+                    new_comments = reddit_data['comments'][:MAX_COMMENTS_PER_THREAD]
+                    all_comments.extend(new_comments)
+                    total_comments += len(new_comments)
+                    if total_comments >= MAX_TOTAL_COMMENTS:
+                        logger.warning(f"Reached maximum total comments limit ({MAX_TOTAL_COMMENTS})")
+                        break
                 else:
                     logger.warning(f"Failed to fetch data from {url}")
 
         if not all_comments:
             return jsonify({"error": "No comments found in the provided URLs"}), 404
+
+        logger.info(f"Total comments extracted: {len(all_comments)}")
 
         logger.info("Done.")
 
