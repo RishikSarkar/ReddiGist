@@ -390,7 +390,7 @@ def find_phrase_positions(comment_text, phrases):
     return positions
 
 def calculate_phrase_score(upvotes, position, alpha=0.1):
-    """Calculate score using the formula: Score = Upvotes / (Position^α)"""
+    """Calculate score using the formula: Score = Upvotes / (Position ^ alpha)"""
     if position <= 0:
         return 0
     return upvotes / (position ** alpha)
@@ -398,6 +398,7 @@ def calculate_phrase_score(upvotes, position, alpha=0.1):
 def compute_phrase_scores(phrases, comments):
     """Compute scores for phrases based on sequential position and upvotes"""
     phrase_scores = defaultdict(float)
+    phrase_total_upvotes = defaultdict(int)
     
     for comment in comments:
         positions = find_phrase_positions(comment['text'], phrases)
@@ -408,8 +409,9 @@ def compute_phrase_scores(phrases, comments):
                 position=position
             )
             phrase_scores[phrase] += score
+            phrase_total_upvotes[phrase] += max(1, comment['score'])
     
-    return phrase_scores
+    return phrase_scores, phrase_total_upvotes
 
 def is_substring_of_any(phrase, other_phrases):
     """Check if phrase is a substring of any other phrase or contains any other phrase"""
@@ -429,7 +431,7 @@ def top_phrases_combined(phrases, comments, top_n=10):
     global phrases_found
     phrases_found = 0
     
-    phrase_scores = compute_phrase_scores(phrases, comments)
+    phrase_scores, total_upvotes = compute_phrase_scores(phrases, comments)
     
     sorted_phrases = sorted(
         phrase_scores.items(), 
@@ -463,7 +465,8 @@ def top_phrases_combined(phrases, comments, top_n=10):
                 if len(final_phrases) >= top_n:
                     break
 
-    return [(phrase, phrase_scores[phrase]) for phrase in final_phrases[:top_n]]
+    return [(phrase, phrase_scores[phrase], total_upvotes[phrase]) 
+            for phrase in final_phrases[:top_n]]
 
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
@@ -561,7 +564,7 @@ def get_top_reddit_phrases():
                     
                     clean_phrases.add(phrase)
                     seen_phrases_lower.add(phrase.lower())
-                    phrases_found = len(clean_phrases)  # Update based on actual found phrases
+                    phrases_found = len(clean_phrases)
                     
                     if len(clean_phrases) >= top_n:
                         break
@@ -592,11 +595,17 @@ def get_top_reddit_phrases():
         logger.info("Done.")
 
         result = []
-        for idx, (phrase, score) in enumerate(top_phrases, 1):
+        for idx, (phrase, score, upvotes) in enumerate(top_phrases, 1):
             if print_scores:
-                result.append(f'{phrase}: {score}')
+                result.append({
+                    'phrase': phrase,
+                    'score': f'{score:.2f}',
+                    'upvotes': upvotes
+                })
             else:
-                result.append(f'{phrase}')
+                result.append({
+                    'phrase': phrase
+                })
 
         response_data = {'top_phrases': result}
 

@@ -7,6 +7,12 @@ interface RedditPost {
   title: string;
 }
 
+interface PhraseResult {
+  phrase: string;
+  score?: string;
+  upvotes?: number;
+}
+
 const MAX_THREADS = 5;
 
 export default function Home() {
@@ -17,7 +23,7 @@ export default function Home() {
   const [ngramLimit, setNgramLimit] = useState('5');
   const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(true);
   const [printScores, setPrintScores] = useState(false);
-  const [result, setResult] = useState<string[]>([]);
+  const [result, setResult] = useState<PhraseResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [phrasesFound, setPhrasesFound] = useState(0);
@@ -79,36 +85,37 @@ export default function Home() {
     setPhrasesFound(0);
 
     try {
-        const response = await fetch('/api/top_phrases', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                urls: selectedPosts.map(post => post.url),
-                top_n: parseInt(topN),
-                custom_words: customWords,
-                ngram_limit: parseInt(ngramLimit),
-                apply_remove_lowercase: applyRemoveLowercase,
-                print_scores: printScores,
-            }),
-        });
+      const response = await fetch('/api/top_phrases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          urls: selectedPosts.map(post => post.url),
+          top_n: parseInt(topN),
+          custom_words: customWords,
+          ngram_limit: parseInt(ngramLimit),
+          apply_remove_lowercase: applyRemoveLowercase,
+          print_scores: printScores,
+        }),
+      });
 
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Network response was not ok');
-        }
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Network response was not ok');
+      }
 
-        setResult(data.top_phrases);
-        if (data.warning) {
-            setWarning(data.warning);
-        }
+      setResult(data.top_phrases);
+      if (data.warning) {
+        setWarning(data.warning);
+      }
     } catch (error) {
-        console.error('Error:', error);
-        setResult([error instanceof Error ? error.message : 'An error occurred while fetching the data.']);
+      console.error('Error:', error);
+      setResult([]);
+      setWarning(error instanceof Error ? error.message : 'An error occurred while fetching the data.');
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -265,7 +272,7 @@ export default function Home() {
                   onChange={(e) => setPrintScores(e.target.checked)}
                   className="form-checkbox text-[#D93900]"
                 />
-                <label htmlFor="printScores">Print Scores</label>
+                <label htmlFor="printScores">Show Statistics</label>
               </div>
             </div>
           </div>
@@ -311,16 +318,28 @@ export default function Home() {
                   <tr className="border-b border-[#333D42]">
                     <th className="py-2 px-4 text-left w-16 text-gray-400">#</th>
                     <th className="py-2 px-4 text-left text-gray-400">Phrase</th>
+                    {printScores && (
+                      <>
+                        <th className="py-2 px-4 text-right text-gray-400">Score</th>
+                        <th className="py-2 px-4 text-right text-gray-400">Upvotes</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {result.map((phrase, index) => (
+                  {result.map((item, index) => (
                     <tr 
                       key={index}
                       className="border-b border-[#333D42] last:border-0 hover:bg-[#272729] transition-colors"
                     >
                       <td className="py-3 px-4 text-gray-400">{index + 1}</td>
-                      <td className="py-3 px-4">{phrase}</td>
+                      <td className="py-3 px-4">{item.phrase}</td>
+                      {printScores && (
+                        <>
+                          <td className="py-3 px-4 text-right text-gray-400">{item.score}</td>
+                          <td className="py-3 px-4 text-right text-gray-400">{item.upvotes}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
