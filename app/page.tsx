@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface RedditPost {
   url: string;
@@ -20,6 +20,29 @@ export default function Home() {
   const [result, setResult] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [phrasesFound, setPhrasesFound] = useState(0);
+
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isLoading) {
+      interval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/phrases-count');
+          if (!response.ok) throw new Error('Failed to fetch progress');
+          const data = await response.json();
+          setPhrasesFound(Math.min(data.count, parseInt(topN)));
+        } catch (error) {
+          console.error('Error fetching progress:', error);
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLoading, topN]);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -53,6 +76,7 @@ export default function Home() {
     setIsLoading(true);
     setResult([]);
     setWarning(null);
+    setPhrasesFound(0);
 
     try {
         const response = await fetch('/api/top_phrases', {
@@ -253,6 +277,23 @@ export default function Home() {
           >
             {isLoading ? 'Gisting...' : 'Gist'}
           </button>
+
+          {/* Add progress bar */}
+          {isLoading && (
+            <div className="mt-4">
+              <div className="w-full bg-[#272729] rounded-full h-2.5">
+                <div 
+                  className="bg-[#D93900] h-2.5 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${(phrasesFound / parseInt(topN)) * 100}%` 
+                  }}
+                />
+              </div>
+              <div className="text-center text-sm text-gray-400 mt-2">
+                Found {phrasesFound}/{topN} phrases
+              </div>
+            </div>
+          )}
         </form>
 
         {/* Results Section */}

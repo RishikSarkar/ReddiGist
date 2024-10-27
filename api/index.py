@@ -52,6 +52,8 @@ MAX_COMMENTS_PER_THREAD = 1000
 MAX_TOTAL_COMMENTS = 5000
 VERCEL_TIMEOUT = 10
 
+phrases_found = 0
+
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
     return match.group(1) if match else None
@@ -424,6 +426,9 @@ def is_incomplete_phrase(phrase):
 
 def top_phrases_combined(phrases, comments, top_n=10):
     """Get top phrases using position-based scoring with substring deduplication"""
+    global phrases_found
+    phrases_found = 0
+    
     phrase_scores = compute_phrase_scores(phrases, comments)
     
     sorted_phrases = sorted(
@@ -463,6 +468,9 @@ def top_phrases_combined(phrases, comments, top_n=10):
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
     try:
+        global phrases_found
+        phrases_found = 0
+        
         start_time = time.time()
         
         data = request.json
@@ -549,11 +557,15 @@ def get_top_reddit_phrases():
             for phrase in sorted_phrases:
                 if (not is_incomplete_phrase(phrase) and 
                     phrase.lower() not in seen_phrases_lower and
-                    not is_substring_of_any(phrase, clean_phrases)):
+                    not any(phrase.lower() in existing.lower() for existing in clean_phrases)):
                     
                     clean_phrases.add(phrase)
                     seen_phrases_lower.add(phrase.lower())
-            
+                    phrases_found = len(clean_phrases)  # Update based on actual found phrases
+                    
+                    if len(clean_phrases) >= top_n:
+                        break
+
             new_phrases = set(phrase for phrase in clean_phrases 
                              if phrase.lower() not in all_common_phrases_lower)
             
@@ -600,6 +612,11 @@ def get_top_reddit_phrases():
             error_msg = "Request timed out. Try reducing the number of threads or selecting threads with fewer comments."
         logger.error("An error occurred:", exc_info=True)
         return jsonify({"error": error_msg}), 500
+
+@app.route('/api/phrases-count', methods=['GET'])
+def get_phrases_count():
+    global phrases_found
+    return jsonify({"count": phrases_found})
 
 if __name__ == '__main__':
     app.run(debug=True)
