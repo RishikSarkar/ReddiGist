@@ -443,8 +443,8 @@ export default function Home() {
                     <th className="py-2 px-4 text-left text-gray-400">Phrase</th>
                     {printScores && (
                       <>
+                        <th className="py-2 px-4 text-right text-gray-400">Votes</th>
                         <th className="py-2 px-4 text-right text-gray-400">Score</th>
-                        <th className="py-2 px-4 text-right text-gray-400">Upvotes</th>
                       </>
                     )}
                   </tr>
@@ -459,8 +459,8 @@ export default function Home() {
                       <td className="py-3 px-4">{item.phrase}</td>
                       {printScores && (
                         <>
-                          <td className="py-3 px-4 text-right text-gray-400">{item.score}</td>
                           <td className="py-3 px-4 text-right text-gray-400">{item.upvotes}</td>
+                          <td className="py-3 px-4 text-right text-gray-400">{item.score}</td>
                         </>
                       )}
                     </tr>
