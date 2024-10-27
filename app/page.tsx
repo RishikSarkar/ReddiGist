@@ -26,29 +26,21 @@ export default function Home() {
   const [result, setResult] = useState<PhraseResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
-  const [phrasesFound, setPhrasesFound] = useState(0);
-
+  const [loadingDots, setLoadingDots] = useState(0);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
     if (isLoading) {
-      interval = setInterval(async () => {
-        try {
-          const response = await fetch('/api/phrases-count');
-          if (!response.ok) throw new Error('Failed to fetch progress');
-          const data = await response.json();
-          setPhrasesFound(Math.min(data.count, parseInt(topN)));
-        } catch (error) {
-          console.error('Error fetching progress:', error);
-        }
-      }, 1000);
+      interval = setInterval(() => {
+        setLoadingDots(prev => (prev + 1) % 4);
+      }, 500);
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoading, topN]);
+  }, [isLoading]);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -82,7 +74,6 @@ export default function Home() {
     setIsLoading(true);
     setResult([]);
     setWarning(null);
-    setPhrasesFound(0);
 
     try {
       const response = await fetch('/api/top_phrases', {
@@ -282,25 +273,8 @@ export default function Home() {
             className="w-full bg-[#D93900] text-white py-3 px-4 rounded-lg hover:bg-[#ff4500] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isLoading || selectedPosts.length === 0}
           >
-            {isLoading ? 'Gisting...' : 'Gist'}
+            {isLoading ? `Gisting${'.'.repeat(loadingDots)}` : 'Gist'}
           </button>
-
-          {/* Add progress bar */}
-          {isLoading && (
-            <div className="mt-4">
-              <div className="w-full bg-[#272729] rounded-full h-2.5">
-                <div 
-                  className="bg-[#D93900] h-2.5 rounded-full transition-all duration-300"
-                  style={{ 
-                    width: `${(phrasesFound / parseInt(topN)) * 100}%` 
-                  }}
-                />
-              </div>
-              <div className="text-center text-sm text-gray-400 mt-2">
-                Found {phrasesFound}/{topN} phrases
-              </div>
-            </div>
-          )}
         </form>
 
         {/* Results Section */}

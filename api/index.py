@@ -14,7 +14,6 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import praw
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -52,14 +51,6 @@ URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%
 MAX_COMMENTS_PER_THREAD = 1000
 MAX_TOTAL_COMMENTS = 5000
 VERCEL_TIMEOUT = 10
-
-progress_store = {}
-
-def update_progress(request_id, count):
-    progress_store[request_id] = {
-        'count': count,
-        'timestamp': datetime.now()
-    }
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -478,9 +469,6 @@ def top_phrases_combined(phrases, comments, top_n=10):
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
     try:
-        global phrases_found
-        phrases_found = 0
-        
         start_time = time.time()
         
         data = request.json
@@ -571,7 +559,6 @@ def get_top_reddit_phrases():
                     
                     clean_phrases.add(phrase)
                     seen_phrases_lower.add(phrase.lower())
-                    phrases_found = len(clean_phrases)
                     
                     if len(clean_phrases) >= top_n:
                         break
@@ -629,18 +616,8 @@ def get_top_reddit_phrases():
         logger.error("An error occurred:", exc_info=True)
         return jsonify({"error": error_msg}), 500
 
-@app.route('/api/phrases-count', methods=['GET'])
-def get_phrases_count():
-    request_id = request.args.get('request_id')
-    if request_id and request_id in progress_store:
-        return jsonify({"count": progress_store[request_id]['count']})
-    return jsonify({"count": 0})
-
-def cleanup_progress():
-    cutoff = datetime.now() - timedelta(minutes=5)
-    expired = [k for k, v in progress_store.items() if v['timestamp'] < cutoff]
-    for k in expired:
-        progress_store.pop(k)
+if __name__ == '__main__':
+    app.run(debug=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
