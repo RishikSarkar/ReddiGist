@@ -70,9 +70,9 @@ NUMERIC_START_REGEX = re.compile(r'^\d+')
 CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$', re.IGNORECASE)
 URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
-MAX_COMMENTS_PER_THREAD = 10000
-MAX_TOTAL_COMMENTS = 50000
-MAX_PHRASE_LENGTH = 100
+MAX_COMMENTS_PER_THREAD = 1000
+MAX_TOTAL_COMMENTS = 5000
+VERCEL_TIMEOUT = 10
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -450,6 +450,8 @@ def top_phrases_combined(phrases, comments, top_n=10):
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
     try:
+        start_time = time.time()
+        
         data = request.json
         if not data:
             return jsonify({"error": "No JSON payload provided"}), 400
@@ -470,23 +472,37 @@ def get_top_reddit_phrases():
         all_comments = []
         total_comments = 0
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_url = {executor.submit(get_reddit_data, url): url for url in urls}
             for future in as_completed(future_to_url):
+                if time.time() - start_time > VERCEL_TIMEOUT:
+                    logger.warning("Approaching Vercel timeout limit, processing with current comments")
+                    break
+                    
                 url = future_to_url[future]
-                reddit_data = future.result()
-                if reddit_data and 'comments' in reddit_data:
-                    new_comments = reddit_data['comments'][:MAX_COMMENTS_PER_THREAD]
-                    all_comments.extend(new_comments)
-                    total_comments += len(new_comments)
-                    if total_comments >= MAX_TOTAL_COMMENTS:
-                        logger.warning(f"Reached maximum total comments limit ({MAX_TOTAL_COMMENTS})")
-                        break
-                else:
-                    logger.warning(f"Failed to fetch data from {url}")
+                try:
+                    reddit_data = future.result(timeout=2)
+                    if reddit_data and 'comments' in reddit_data:
+                        new_comments = reddit_data['comments'][:MAX_COMMENTS_PER_THREAD]
+                        remaining_space = MAX_TOTAL_COMMENTS - total_comments
+                        if remaining_space > 0:
+                            new_comments = new_comments[:remaining_space]
+                            all_comments.extend(new_comments)
+                            total_comments += len(new_comments)
+                        
+                        if total_comments >= MAX_TOTAL_COMMENTS:
+                            logger.warning(f"Reached maximum total comments limit ({MAX_TOTAL_COMMENTS})")
+                            break
+                except Exception as e:
+                    logger.warning(f"Error processing {url}: {str(e)}")
+                    continue
 
         if not all_comments:
             return jsonify({"error": "No comments found in the provided URLs"}), 404
+            
+        if len(all_comments) > MAX_TOTAL_COMMENTS:
+            logger.warning(f"Truncating {len(all_comments)} comments to {MAX_TOTAL_COMMENTS}")
+            all_comments = all_comments[:MAX_TOTAL_COMMENTS]
 
         logger.info(f"Total comments extracted: {len(all_comments)}")
 
