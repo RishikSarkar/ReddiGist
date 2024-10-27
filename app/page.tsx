@@ -7,6 +7,8 @@ interface RedditPost {
   title: string;
 }
 
+const MAX_THREADS = 5;
+
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
   const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>([]);
@@ -27,6 +29,10 @@ export default function Home() {
   const handleAddUrl = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUrl && !selectedPosts.some(post => post.url === currentUrl)) {
+      if (selectedPosts.length >= MAX_THREADS) {
+        alert(`Maximum ${MAX_THREADS} threads allowed to prevent timeout issues.`);
+        return;
+      }
       const newPost: RedditPost = {
         url: currentUrl,
         title: extractTitleFromUrl(currentUrl)
@@ -91,6 +97,9 @@ export default function Home() {
           <div className="bg-[#1A1A1B] p-6 rounded-lg">
             <label htmlFor="url" className="block mb-2 font-semibold">
               Add Reddit URLs
+              <span className="text-sm text-gray-400 ml-2">
+                (Max {MAX_THREADS} threads)
+              </span>
             </label>
             <div className="flex gap-2">
               <input
