@@ -264,13 +264,27 @@ export default function Home() {
                 {warning}
               </div>
             )}
-            <ul className="list-decimal list-inside space-y-2">
-              {result.map((phrase, index) => (
-                <li key={index} className="text-lg">
-                  {phrase}
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#333D42]">
+                    <th className="py-2 px-4 text-left w-16 text-gray-400">#</th>
+                    <th className="py-2 px-4 text-left text-gray-400">Phrase</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.map((phrase, index) => (
+                    <tr 
+                      key={index}
+                      className="border-b border-[#333D42] last:border-0 hover:bg-[#272729] transition-colors"
+                    >
+                      <td className="py-3 px-4 text-gray-400">{index + 1}</td>
+                      <td className="py-3 px-4">{phrase}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
