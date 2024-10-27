@@ -342,14 +342,12 @@ def final_post_process(phrases, custom_words):
 #     return phrase_upvote_map
 
 def find_phrase_positions(comment_text, phrases):
-    """
-    Find sequential positions (1, 2, 3, ...) of phrases based on order of appearance
-    regardless of their actual position in the text
-    """
+    """Find sequential positions of phrases based on order of appearance"""
     positions = {}
     current_position = 1
     comment_lower = comment_text.lower()
     seen_phrases = set()
+    remaining_phrases = len(phrases)
     
     for phrase in phrases:
         phrase_lower = phrase.lower()
@@ -357,6 +355,10 @@ def find_phrase_positions(comment_text, phrases):
             positions[phrase] = current_position
             current_position += 1
             seen_phrases.add(phrase_lower)
+            remaining_phrases -= 1
+            
+            if remaining_phrases == 0:
+                break
     
     return positions
 
@@ -385,10 +387,10 @@ def compute_phrase_scores(phrases, comments):
 def is_substring_of_any(phrase, other_phrases):
     """Check if phrase is a substring of any other phrase"""
     phrase_lower = phrase.lower()
-    return any(
-        phrase_lower in other.lower() and phrase_lower != other.lower()
-        for other in other_phrases
-    )
+    for other in other_phrases:
+        if phrase_lower in other.lower() and phrase_lower != other.lower():
+            return True
+    return False
 
 def is_incomplete_phrase(phrase):
     """Check if phrase ends with common connecting words"""
