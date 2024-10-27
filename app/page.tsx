@@ -44,7 +44,6 @@ export default function Home() {
     if (isLoadingPost) {
       interval = setInterval(() => {
         setLoadingPostDots(prev => (prev + 1) % 4);
-        setCurrentUrl(`Retrieving thread information${'.'.repeat(loadingPostDots)}`);
       }, 500);
     }
 
@@ -82,6 +81,7 @@ export default function Home() {
         
         if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
           setIsLoadingPost(false);
+          setLoadingPostDots(0);
           setCurrentUrl(submittedUrl);
           alert(`Adding this thread would exceed the maximum total comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()} comments). Please remove some threads to make space.`);
           return;
@@ -105,6 +105,7 @@ export default function Home() {
         setCurrentUrl('');
       } finally {
         setIsLoadingPost(false);
+        setLoadingPostDots(0);
       }
     }
   };
