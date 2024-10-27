@@ -134,7 +134,7 @@ export default function Home() {
           custom_words: customWords,
           ngram_limit: parseInt(ngramLimit),
           apply_remove_lowercase: applyRemoveLowercase,
-          print_scores: printScores,
+          print_scores: true
         }),
       });
 

@@ -629,16 +629,11 @@ def get_top_reddit_phrases():
 
         result = []
         for idx, (phrase, score, upvotes) in enumerate(top_phrases, 1):
-            if print_scores:
-                result.append({
-                    'phrase': phrase,
-                    'score': f'{score:.2f}',
-                    'upvotes': upvotes
-                })
-            else:
-                result.append({
-                    'phrase': phrase
-                })
+            result.append({
+                'phrase': phrase,
+                'score': f'{score:.2f}',
+                'upvotes': upvotes
+            })
 
         response_data = {'top_phrases': result}
 
