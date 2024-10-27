@@ -21,9 +21,8 @@
     }
   ],
   "functions": {
-    "app/api/**/*": {
+    "api/**/*.py": {
       "maxDuration": 60
     }
   }
 }
-
