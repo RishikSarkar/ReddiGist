@@ -17,8 +17,8 @@ export const metadata = {
     type: 'website',
   },
   icons: {
-    icon: '/reddigist-logo-nobg.ico',
-    shortcut: '/reddigist-logo-nobg.ico',
+    icon: '/reddigist-logo-white.ico',
+    shortcut: '/reddigist-logo-white.ico',
   }
 }
 
