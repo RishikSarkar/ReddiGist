@@ -85,7 +85,11 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
                 logger.warning(f"Max comments ({max_comments}) reached for {url}")
                 break
                 
-            if hasattr(comment, 'body') and comment.author and comment.author.name != 'AutoModerator':
+            if (hasattr(comment, 'body') and 
+                comment.author and 
+                comment.author.name != 'AutoModerator' and 
+                hasattr(comment, 'score') and 
+                comment.score >= 0):
                 comments.append({
                     'text': comment.body,
                     'score': comment.score
