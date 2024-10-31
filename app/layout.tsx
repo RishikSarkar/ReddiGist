@@ -16,7 +16,10 @@ export const metadata = {
     description: 'Extract and analyze key phrases from Reddit discussions',
     type: 'website',
   },
-  icons: []
+  icons: {
+    icon: '/reddigist-logo-nobg.ico',
+    shortcut: '/reddigist-logo-nobg.ico',
+  }
 }
 
 export default function RootLayout({
@@ -26,9 +29,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="data:," />
-      </head>
       <body className={ibmPlexSans.className}>{children}</body>
     </html>
   )
