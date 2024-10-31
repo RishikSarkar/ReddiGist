@@ -350,20 +350,29 @@ export default function Home() {
                 {selectedPosts.map((post) => (
                   <div
                     key={post.url}
-                    className="flex items-center gap-2 bg-[#272729] px-3 py-1 rounded-full border border-[#333D42]"
+                    className="flex items-center gap-2 bg-[#272729] px-3 py-1 rounded-full border border-[#333D42] hover:border-[#D93900] transition-colors"
                   >
-                    <span className="text-sm">
+                    <a 
+                      href={post.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm hover:text-[#D93900] transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {post.title}
                       {post.numComments && (
                         <span className="text-gray-400 ml-1">
                           ({post.numComments.toLocaleString()} comments)
                         </span>
                       )}
-                    </span>
+                    </a>
                     <button
                       type="button"
-                      onClick={() => handleRemovePost(post.url)}
-                      className="text-gray-400 hover:text-[#D93900]"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleRemovePost(post.url);
+                      }}
+                      className="text-gray-400 hover:text-[#D93900] transition-colors ml-1"
                     >
                       ×
                     </button>
