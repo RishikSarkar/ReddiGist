@@ -22,6 +22,48 @@ const DEFAULT_NGRAM_LIMIT = '5';
 const DEFAULT_REMOVE_LOWERCASE = true;
 const DEFAULT_PRINT_SCORES = false;
 
+interface TooltipContent {
+  title: string;
+  description: string;
+}
+
+const tooltips: Record<string, TooltipContent> = {
+  urlInput: {
+    title: "Adding Reddit URLs",
+    description: "Paste Reddit thread URLs here. You can add multiple threads up to a total of 5,000 comments. The tool will analyze all comments to find common meaningful phrases."
+  },
+  topN: {
+    title: "Number of Results",
+    description: "How many top phrases to show in the results. Higher numbers will find more phrases but may include less relevant ones."
+  },
+  ngramLimit: {
+    title: "Max Words per Phrase",
+    description: "Maximum number of words to include in each phrase. Higher limits can catch longer phrases but may take longer to process."
+  },
+  customWords: {
+    title: "Custom Words to Exclude",
+    description: "Add comma-separated words to exclude from results. Useful for filtering out common phrases specific to the subreddit or topic."
+  },
+  removeLowercase: {
+    title: "Remove Lowercase Phrases",
+    description: "Only keep phrases with at least two capitalized words. Helps focus on proper nouns and significant terms while filtering out common phrases."
+  },
+  showStats: {
+    title: "Show Statistics",
+    description: "Display vote counts and relevance scores for each phrase. Votes show total upvotes, while Score indicates phrase relevance based on votes and comment position."
+  }
+};
+
+const InfoTooltip: React.FC<{ content: TooltipContent }> = ({ content }) => (
+  <div className="group relative inline-block ml-2">
+    <div className="text-gray-500 hover:text-gray-400 cursor-help text-xs">ⓘ</div>
+    <div className="invisible group-hover:visible absolute z-10 w-64 p-4 mt-2 bg-[#272729] rounded-lg shadow-lg border border-[#333D42] text-sm -left-20">
+      <h3 className="font-semibold mb-2 text-[#D93900]">{content.title}</h3>
+      <p className="text-gray-300">{content.description}</p>
+    </div>
+  </div>
+);
+
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
   const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>([]);
@@ -218,8 +260,9 @@ export default function Home() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* URL Input Section */}
           <div className="bg-[#1A1A1B] p-6 rounded-lg">
-            <label htmlFor="url" className="block mb-2 font-semibold">
-              Add Reddit URLs
+            <label htmlFor="url" className="mb-2 flex items-center">
+              <span className="font-semibold">Add Reddit URLs</span>
+              <InfoTooltip content={tooltips.urlInput} />
               <span className="text-sm text-gray-400 ml-2">
                 ({selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0).toLocaleString()} / {MAX_TOTAL_COMMENTS.toLocaleString()} comments)
               </span>
@@ -291,9 +334,12 @@ export default function Home() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="topN" className="block mb-2 font-semibold">
-                  Number of Results
-                </label>
+                <div>
+                  <label htmlFor="topN" className="mb-2 flex items-center">
+                    <span className="font-semibold">Number of Results</span>
+                    <InfoTooltip content={tooltips.topN} />
+                  </label>
+                </div>
                 <div className="relative flex">
                   <input
                     type="number"
@@ -322,8 +368,9 @@ export default function Home() {
                 </div>
               </div>
               <div>
-                <label htmlFor="ngramLimit" className="block mb-2 font-semibold">
-                  Max Words per Phrase
+                <label htmlFor="ngramLimit" className="mb-2 flex items-center">
+                  <span className="font-semibold">Max Words per Phrase</span>
+                  <InfoTooltip content={tooltips.ngramLimit} />
                 </label>
                 <div className="relative flex">
                   <input
@@ -355,8 +402,9 @@ export default function Home() {
             </div>
 
             <div>
-              <label htmlFor="customWords" className="block mb-2 font-semibold">
-                Custom Words to Exclude
+              <label htmlFor="customWords" className="mb-2 flex items-center">
+                <span className="font-semibold">Custom Words to Exclude</span>
+                <InfoTooltip content={tooltips.customWords} />
               </label>
               <input
                 type="text"
@@ -377,7 +425,10 @@ export default function Home() {
                   onChange={(e) => setApplyRemoveLowercase(e.target.checked)}
                   className="form-checkbox text-[#D93900]"
                 />
-                <label htmlFor="applyRemoveLowercase">Remove Lowercase Phrases</label>
+                <div className="flex items-center">
+                  <span className="font-semibold">Remove Lowercase Phrases</span>
+                  <InfoTooltip content={tooltips.removeLowercase} />
+                </div>
               </div>
               <div className="flex items-center space-x-2">
                 <input
@@ -387,7 +438,10 @@ export default function Home() {
                   onChange={(e) => setPrintScores(e.target.checked)}
                   className="form-checkbox text-[#D93900]"
                 />
-                <label htmlFor="printScores">Show Statistics</label>
+                <div className="flex items-center">
+                  <span className="font-semibold">Show Statistics</span>
+                  <InfoTooltip content={tooltips.showStats} />
+                </div>
               </div>
             </div>
 
