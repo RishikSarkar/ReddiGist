@@ -6,6 +6,7 @@ interface RedditPost {
   url: string;
   title: string;
   numComments?: number;
+  effectiveComments?: number;
 }
 
 interface PhraseResult {
@@ -176,19 +177,28 @@ export default function Home() {
 
         const data = await response.json();
         
-        if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
+        if (currentTotalComments >= MAX_TOTAL_COMMENTS) {
           setIsLoadingPost(false);
           setLoadingPostDots(0);
           setCurrentUrl(submittedUrl);
-          alert(`Adding this thread would exceed the maximum total comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()} comments). Please remove some threads to make space.`);
+          alert(`Maximum comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()}) already reached. Cannot add more threads.`);
           return;
         }
 
+        const remainingSpace = MAX_TOTAL_COMMENTS - currentTotalComments;
+        const effectiveComments = Math.min(data.numComments, remainingSpace);
+        
         const newPost: RedditPost = {
           url: submittedUrl,
           title: data.title,
-          numComments: data.numComments
+          numComments: data.numComments,
+          effectiveComments: effectiveComments
         };
+
+        if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
+          const message = `This thread has ${data.numComments.toLocaleString()} comments. Only the top ${effectiveComments.toLocaleString()} comments will be analyzed to stay within the ${MAX_TOTAL_COMMENTS.toLocaleString()} comment limit.`;
+          alert(message);
+        }
 
         setSelectedPosts([...selectedPosts, newPost]);
         setCurrentUrl('');
@@ -314,7 +324,7 @@ export default function Home() {
               <InfoTooltip content={tooltips.urlInput} />
               <span className="text-sm text-gray-400 ml-2">
                 {isMounted ? (
-                  `(${selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0).toLocaleString()} / ${MAX_TOTAL_COMMENTS.toLocaleString()} comments)`
+                  `(${selectedPosts.reduce((sum, post) => sum + (post.effectiveComments || post.numComments || 0), 0).toLocaleString()} / ${MAX_TOTAL_COMMENTS.toLocaleString()} comments)`
                 ) : (
                   `(0 / ${MAX_TOTAL_COMMENTS.toLocaleString()} comments)`
                 )}

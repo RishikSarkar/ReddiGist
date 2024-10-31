@@ -91,6 +91,8 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
                     'score': comment.score
                 })
                 comment_count += 1
+                
+        comments.sort(key=lambda x: x['score'], reverse=True)
         
         if comments:
             logger.info(f"Successfully fetched {len(comments)} comments from {url}")
@@ -530,9 +532,10 @@ def get_top_reddit_phrases():
             
         if len(all_comments) > MAX_TOTAL_COMMENTS:
             logger.warning(f"Truncating {len(all_comments)} comments to {MAX_TOTAL_COMMENTS}")
+            all_comments.sort(key=lambda x: x['score'], reverse=True)
             all_comments = all_comments[:MAX_TOTAL_COMMENTS]
 
-        logger.info(f"Total comments extracted: {len(all_comments)}")
+        logger.info(f"Total comments after truncation: {len(all_comments)}")
 
         logger.info("Done.")
 
