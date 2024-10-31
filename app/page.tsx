@@ -66,13 +66,27 @@ const InfoTooltip: React.FC<{ content: TooltipContent }> = ({ content }) => (
 
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
-  const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>([]);
-  const [topN, setTopN] = useState(DEFAULT_TOP_N);
-  const [customWords, setCustomWords] = useState('');
-  const [ngramLimit, setNgramLimit] = useState(DEFAULT_NGRAM_LIMIT);
-  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(DEFAULT_REMOVE_LOWERCASE);
-  const [printScores, setPrintScores] = useState(DEFAULT_PRINT_SCORES);
-  const [result, setResult] = useState<PhraseResult[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>(() => 
+    loadFromLocalStorage('selectedPosts', [])
+  );
+  const [topN, setTopN] = useState(() => 
+    loadFromLocalStorage('topN', DEFAULT_TOP_N)
+  );
+  const [customWords, setCustomWords] = useState(() => 
+    loadFromLocalStorage('customWords', '')
+  );
+  const [ngramLimit, setNgramLimit] = useState(() => 
+    loadFromLocalStorage('ngramLimit', DEFAULT_NGRAM_LIMIT)
+  );
+  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(() => 
+    loadFromLocalStorage('removeLowercase', DEFAULT_REMOVE_LOWERCASE)
+  );
+  const [printScores, setPrintScores] = useState(() => 
+    loadFromLocalStorage('printScores', DEFAULT_PRINT_SCORES)
+  );
+  const [result, setResult] = useState<PhraseResult[]>(() => 
+    loadFromLocalStorage('result', [])
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState(0);
@@ -81,6 +95,11 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [maxTime, setMaxTime] = useState(60);
   const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -101,6 +120,34 @@ export default function Home() {
       if (interval) clearInterval(interval);
     };
   }, [isLoading, isLoadingPost]);
+
+  useEffect(() => {
+    saveToLocalStorage('selectedPosts', selectedPosts);
+  }, [selectedPosts]);
+
+  useEffect(() => {
+    saveToLocalStorage('topN', topN);
+  }, [topN]);
+
+  useEffect(() => {
+    saveToLocalStorage('customWords', customWords);
+  }, [customWords]);
+
+  useEffect(() => {
+    saveToLocalStorage('ngramLimit', ngramLimit);
+  }, [ngramLimit]);
+
+  useEffect(() => {
+    saveToLocalStorage('removeLowercase', applyRemoveLowercase);
+  }, [applyRemoveLowercase]);
+
+  useEffect(() => {
+    saveToLocalStorage('printScores', printScores);
+  }, [printScores]);
+
+  useEffect(() => {
+    saveToLocalStorage('result', result);
+  }, [result]);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -246,11 +293,13 @@ export default function Home() {
   };
 
   const handleResetDefaults = () => {
+    localStorage.clear();
     setTopN(DEFAULT_TOP_N);
     setNgramLimit(DEFAULT_NGRAM_LIMIT);
     setCustomWords('');
     setApplyRemoveLowercase(DEFAULT_REMOVE_LOWERCASE);
     setPrintScores(DEFAULT_PRINT_SCORES);
+    setResult([]);
   };
 
   return (
@@ -264,7 +313,11 @@ export default function Home() {
               <span className="font-semibold">Add Reddit URLs</span>
               <InfoTooltip content={tooltips.urlInput} />
               <span className="text-sm text-gray-400 ml-2">
-                ({selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0).toLocaleString()} / {MAX_TOTAL_COMMENTS.toLocaleString()} comments)
+                {isMounted ? (
+                  `(${selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0).toLocaleString()} / ${MAX_TOTAL_COMMENTS.toLocaleString()} comments)`
+                ) : (
+                  `(0 / ${MAX_TOTAL_COMMENTS.toLocaleString()} comments)`
+                )}
               </span>
             </label>
             <div className="flex gap-2">
@@ -291,7 +344,7 @@ export default function Home() {
           </div>
 
           {/* Selected Posts Display */}
-          {selectedPosts.length > 0 && (
+          {selectedPosts.length > 0 && isMounted && (
             <>
               <div className="flex flex-wrap gap-2 mt-2 justify-center">
                 {selectedPosts.map((post) => (
@@ -528,3 +581,17 @@ export default function Home() {
     </main>
   );
 }
+
+const saveToLocalStorage = (key: string, value: any) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+};
+
+const loadFromLocalStorage = (key: string, defaultValue: any) => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : defaultValue;
+  }
+  return defaultValue;
+};
