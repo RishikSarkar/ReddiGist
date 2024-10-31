@@ -145,50 +145,6 @@ def is_meaningful_phrase(phrase):
     capitalized_count = sum(1 for word in phrase if word[0].isupper())
     return capitalized_count >= 2
 
-# def remove_substrings(phrases):
-#     final_phrases = set()
-#     sorted_phrases = sorted(phrases, key=lambda x: len(x), reverse=True)
-    
-#     for phrase in sorted_phrases:
-#         if not any(phrase.lower() in other.lower() for other in final_phrases):
-#             final_phrases.add(phrase)
-    
-#     return final_phrases
-
-# def remove_grammar(phrases):
-#     """Remove grammar-related words from phrases."""
-#     grammar = {'a', 'an', 'the', 'i'}
-#     processed_phrases = set()
-
-#     for phrase in phrases:
-#         words = phrase.split()
-
-#         if words and NUMERIC_START_REGEX.match(words[0]):
-#             words = words[1:]
-
-#         if words and words[0].lower() in grammar:
-#             words = words[1:]
-#         if words and words[-1].lower() in grammar:
-#             words = words[:-1]
-
-#         if words:
-#             processed_phrases.add(' '.join(words))
-
-#     return processed_phrases
-
-# def remove_custom_words(phrase, custom_words):
-#     words = phrase.split()
-#     cleaned_words = [word for word in words if word.lower() not in custom_words]
-#     return ' '.join(cleaned_words)
-
-# def remove_common_only_phrases(phrases, custom_stop_words):
-#     filtered_phrases = []
-#     for phrase in phrases:
-#         words = phrase.split()
-#         if not all(word.lower() in custom_stop_words for word in words) and len(words) > 2:
-#             filtered_phrases.append(phrase)
-#     return filtered_phrases
-
 def remove_all_lowercase_phrases(phrases):
     articles_and_common_words = {
         'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
@@ -228,43 +184,6 @@ def post_process_ngrams(phrases):
             final_phrases.add(phrase_str)
 
     return final_phrases
-
-# def combine_similar_phrases(phrases, similarity_threshold=3):
-#     combined_phrases = list(phrases)
-#     merged = True
-    
-#     while merged:
-#         merged = False
-#         new_phrases = []
-#         skip = set()
-
-#         for i, phrase in enumerate(combined_phrases):
-#             if i in skip:
-#                 continue
-
-#             phrase_words = phrase.split()
-#             combined_phrase = phrase
-
-#             for j, other_phrase in enumerate(combined_phrases):
-#                 if i != j and j not in skip:
-#                     other_phrase_words = other_phrase.split()
-
-#                     if phrase_words[:similarity_threshold] == other_phrase_words[:similarity_threshold]:
-#                         combined_phrase = ' '.join(phrase_words + other_phrase_words[similarity_threshold:])
-#                         skip.add(j)
-#                         merged = True
-#                     elif phrase_words[-similarity_threshold:] == other_phrase_words[-similarity_threshold:]:
-#                         combined_phrase = ' '.join(phrase_words[:-similarity_threshold] + other_phrase_words)
-#                         skip.add(j)
-#                         merged = True
-#                     else:
-#                         combined_phrase = phrase
-
-#             new_phrases.append(combined_phrase)
-
-#         combined_phrases = new_phrases
-
-#     return set(combined_phrases)
 
 def process_phrases_in_single_pass(phrases, custom_words, custom_stop_words):
     """Combine all filtering steps into a single efficient pass"""
@@ -316,60 +235,6 @@ def final_post_process(phrases, custom_words):
     """Single pass processing for all phrases"""
     string_phrases = [tuple_to_string(phrase) if isinstance(phrase, tuple) else phrase for phrase in phrases]
     return process_phrases_in_single_pass(string_phrases, custom_words, custom_stop_words)
-
-# def phrase_tfidf(phrases, comments, ngram_limit=5):
-#     comment_texts = [comment['text'] for comment in comments]
-    
-#     vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, ngram_limit + 2), lowercase=False)
-#     tfidf_matrix = vectorizer.fit_transform(comment_texts)
-
-#     tfidf_scores = np.sum(tfidf_matrix.toarray(), axis=0)
-#     phrase_tfidf_map = dict(zip(vectorizer.get_feature_names_out(), tfidf_scores))
-
-#     return phrase_tfidf_map
-
-# def calculate_tfidf(phrases, comments):
-#     tf_scores = defaultdict(float)
-#     df_scores = defaultdict(int)
-#     N = len(comments)
-    
-#     for phrase in phrases:
-#         phrase_lower = phrase.lower()
-#         for comment in comments:
-#             text_lower = comment['text'].lower()
-#             count = text_lower.count(phrase_lower)
-#             if count > 0:
-#                 tf_scores[phrase] += 1 + math.log(count) if count > 0 else 0
-#                 df_scores[phrase] += 1
-    
-#     tfidf_scores = {}
-#     for phrase in phrases:
-#         if df_scores[phrase] > 0:
-#             tf = tf_scores[phrase]
-#             idf = math.log((1 + N)/(1 + df_scores[phrase])) + 1
-#             tfidf_scores[phrase] = tf * idf
-    
-#     norm = math.sqrt(sum(score * score for score in tfidf_scores.values()))
-#     if norm > 0:
-#         for phrase in tfidf_scores:
-#             tfidf_scores[phrase] /= norm
-    
-#     return tfidf_scores
-
-# def phrase_tfidf(phrases, comments):
-#     return calculate_tfidf(phrases, comments)
-
-# def compute_phrase_upvotes(phrases, comments):
-#     phrase_upvote_map = defaultdict(int)
-
-#     for comment in comments:
-#         comment_text_lower = comment['text'].lower()
-
-#         for phrase in phrases:
-#             if phrase.lower() in comment_text_lower:
-#                 phrase_upvote_map[phrase] += comment['score']
-
-#     return phrase_upvote_map
 
 def find_phrase_positions(comment_text, phrases):
     """Find sequential positions of phrases based on order of appearance"""
@@ -686,3 +551,139 @@ if __name__ == '__main__':
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+# def remove_substrings(phrases):
+#     final_phrases = set()
+#     sorted_phrases = sorted(phrases, key=lambda x: len(x), reverse=True)
+    
+#     for phrase in sorted_phrases:
+#         if not any(phrase.lower() in other.lower() for other in final_phrases):
+#             final_phrases.add(phrase)
+    
+#     return final_phrases
+
+# def remove_grammar(phrases):
+#     """Remove grammar-related words from phrases."""
+#     grammar = {'a', 'an', 'the', 'i'}
+#     processed_phrases = set()
+
+#     for phrase in phrases:
+#         words = phrase.split()
+
+#         if words and NUMERIC_START_REGEX.match(words[0]):
+#             words = words[1:]
+
+#         if words and words[0].lower() in grammar:
+#             words = words[1:]
+#         if words and words[-1].lower() in grammar:
+#             words = words[:-1]
+
+#         if words:
+#             processed_phrases.add(' '.join(words))
+
+#     return processed_phrases
+
+# def remove_custom_words(phrase, custom_words):
+#     words = phrase.split()
+#     cleaned_words = [word for word in words if word.lower() not in custom_words]
+#     return ' '.join(cleaned_words)
+
+# def remove_common_only_phrases(phrases, custom_stop_words):
+#     filtered_phrases = []
+#     for phrase in phrases:
+#         words = phrase.split()
+#         if not all(word.lower() in custom_stop_words for word in words) and len(words) > 2:
+#             filtered_phrases.append(phrase)
+#     return filtered_phrases
+
+# def combine_similar_phrases(phrases, similarity_threshold=3):
+#     combined_phrases = list(phrases)
+#     merged = True
+    
+#     while merged:
+#         merged = False
+#         new_phrases = []
+#         skip = set()
+
+#         for i, phrase in enumerate(combined_phrases):
+#             if i in skip:
+#                 continue
+
+#             phrase_words = phrase.split()
+#             combined_phrase = phrase
+
+#             for j, other_phrase in enumerate(combined_phrases):
+#                 if i != j and j not in skip:
+#                     other_phrase_words = other_phrase.split()
+
+#                     if phrase_words[:similarity_threshold] == other_phrase_words[:similarity_threshold]:
+#                         combined_phrase = ' '.join(phrase_words + other_phrase_words[similarity_threshold:])
+#                         skip.add(j)
+#                         merged = True
+#                     elif phrase_words[-similarity_threshold:] == other_phrase_words[-similarity_threshold:]:
+#                         combined_phrase = ' '.join(phrase_words[:-similarity_threshold] + other_phrase_words)
+#                         skip.add(j)
+#                         merged = True
+#                     else:
+#                         combined_phrase = phrase
+
+#             new_phrases.append(combined_phrase)
+
+#         combined_phrases = new_phrases
+
+#     return set(combined_phrases)
+
+# def phrase_tfidf(phrases, comments, ngram_limit=5):
+#     comment_texts = [comment['text'] for comment in comments]
+    
+#     vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, ngram_limit + 2), lowercase=False)
+#     tfidf_matrix = vectorizer.fit_transform(comment_texts)
+
+#     tfidf_scores = np.sum(tfidf_matrix.toarray(), axis=0)
+#     phrase_tfidf_map = dict(zip(vectorizer.get_feature_names_out(), tfidf_scores))
+
+#     return phrase_tfidf_map
+
+# def calculate_tfidf(phrases, comments):
+#     tf_scores = defaultdict(float)
+#     df_scores = defaultdict(int)
+#     N = len(comments)
+    
+#     for phrase in phrases:
+#         phrase_lower = phrase.lower()
+#         for comment in comments:
+#             text_lower = comment['text'].lower()
+#             count = text_lower.count(phrase_lower)
+#             if count > 0:
+#                 tf_scores[phrase] += 1 + math.log(count) if count > 0 else 0
+#                 df_scores[phrase] += 1
+    
+#     tfidf_scores = {}
+#     for phrase in phrases:
+#         if df_scores[phrase] > 0:
+#             tf = tf_scores[phrase]
+#             idf = math.log((1 + N)/(1 + df_scores[phrase])) + 1
+#             tfidf_scores[phrase] = tf * idf
+    
+#     norm = math.sqrt(sum(score * score for score in tfidf_scores.values()))
+#     if norm > 0:
+#         for phrase in tfidf_scores:
+#             tfidf_scores[phrase] /= norm
+    
+#     return tfidf_scores
+
+# def phrase_tfidf(phrases, comments):
+#     return calculate_tfidf(phrases, comments)
+
+# def compute_phrase_upvotes(phrases, comments):
+#     phrase_upvote_map = defaultdict(int)
+
+#     for comment in comments:
+#         comment_text_lower = comment['text'].lower()
+
+#         for phrase in phrases:
+#             if phrase.lower() in comment_text_lower:
+#                 phrase_upvote_map[phrase] += comment['score']
+
+#     return phrase_upvote_map
