@@ -103,6 +103,7 @@ export default function Home() {
   const [maxTime, setMaxTime] = useState(60);
   const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -187,7 +188,7 @@ export default function Home() {
           setIsLoadingPost(false);
           setLoadingPostDots(0);
           setCurrentUrl(submittedUrl);
-          alert(`Maximum comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()}) already reached. Cannot add more threads.`);
+          setErrorMessage(`Maximum comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()}) already reached. Cannot add more threads.`);
           return;
         }
 
@@ -203,7 +204,7 @@ export default function Home() {
 
         if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
           const message = `This thread has ${data.numComments.toLocaleString()} comments. Only the top ${effectiveComments.toLocaleString()} comments will be analyzed to stay within the ${MAX_TOTAL_COMMENTS.toLocaleString()} comment limit.`;
-          alert(message);
+          setErrorMessage(message);
         }
 
         setSelectedPosts([...selectedPosts, newPost]);
@@ -319,6 +320,22 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0e1113] text-white p-8">
+      {errorMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-[#1A1A1B] p-6 rounded-lg max-w-md w-full mx-4 border border-[#333D42]">
+            <h3 className="text-[#D93900] font-semibold mb-4">Notice</h3>
+            <p className="text-gray-300 mb-6">{errorMessage}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="bg-[#D93900] text-white px-4 py-2 rounded hover:bg-[#ff4500] transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-2xl mx-auto">
         <h1 className="text-4xl font-bold mb-8 text-[#D93900] text-center">ReddiGist</h1>
         <form onSubmit={handleSubmit} className="space-y-6">
