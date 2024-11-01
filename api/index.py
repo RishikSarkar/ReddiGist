@@ -74,17 +74,36 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
             logger.warning(f"Invalid URL: {url}")
             return None
 
-        submission = reddit.submission(id=submission_id)
+        try:
+            submission = reddit.submission(id=submission_id)
+            submission.comment_sort = 'top'
+        except Exception as e:
+            if "Too Many Requests" in str(e):
+                logger.warning("Rate limit hit, waiting 5 seconds...")
+                time.sleep(5)
+                submission = reddit.submission(id=submission_id)
+                submission.comment_sort = 'top'
+            else:
+                raise
+
         total_comments = submission.num_comments
 
         if total_comments <= 500:
             submission.comments.replace_more(limit=None)
         else:
-            submission.comments.replace_more(limit=32)
+            replace_limit = min(16, max(8, total_comments // 500))
+            submission.comments.replace_more(limit=replace_limit)
 
         comments = []
         comment_count = 0
         start_time = time.time()
+        
+        comment_batch = []
+        BATCH_SIZE = 100
+
+        low_score_streak = 0
+        MAX_LOW_SCORE_STREAK = 5
+        MIN_ACCEPTABLE_SCORE = 1
         
         for comment in submission.comments.list():
             if time.time() - start_time > timeout:
@@ -94,22 +113,39 @@ def get_reddit_data(url, max_comments=10000, timeout=300):
             if comment_count >= max_comments:
                 logger.warning(f"Max comments ({max_comments}) reached for {url}")
                 break
+
+            if not hasattr(comment, 'score') or not hasattr(comment, 'body') or not comment.author:
+                continue
                 
-            if (hasattr(comment, 'body') and 
-                comment.author and 
-                comment.author.name != 'AutoModerator' and 
-                hasattr(comment, 'score') and 
-                comment.score >= 0):
-                comments.append({
+            comment_score = comment.score
+
+            if comment_score < MIN_ACCEPTABLE_SCORE:
+                low_score_streak += 1
+                if low_score_streak >= MAX_LOW_SCORE_STREAK:
+                    logger.info(f"Breaking early after {comment_count} comments due to {MAX_LOW_SCORE_STREAK} consecutive low-scoring comments")
+                    break
+                continue
+            else:
+                low_score_streak = 0
+                
+            if (comment.author.name != 'AutoModerator' and comment_score >= 0):
+                comment_batch.append({
                     'text': comment.body,
-                    'score': comment.score
+                    'score': comment_score
                 })
                 comment_count += 1
                 
-        comments.sort(key=lambda x: x['score'], reverse=True)
+                if len(comment_batch) >= BATCH_SIZE:
+                    comments.extend(comment_batch)
+                    comment_batch = []
+                    
+                    time.sleep(0.1)
         
+        if comment_batch:
+            comments.extend(comment_batch)
+                
         if comments:
-            logger.info(f"Successfully fetched {len(comments)} comments from {url}")
+            logger.info(f"Successfully fetched {len(comments)} comments from {url} in {time.time() - start_time:.2f}s")
             return {'comments': comments}
         else:
             logger.warning(f"No comments fetched from {url}")
@@ -176,69 +212,6 @@ def preprocess_ngram(ngram: Tuple[str, ...], remove_lowercase: bool = True, cust
         return False
         
     return True
-
-def filter_words(phrases_with_counts: list, custom_words: set = None) -> set:
-    """
-    Filter phrases based on substring relationships and frequencies.
-    
-    Rules:
-    1. Sort by number of words descending, then by frequency descending.
-    2. If current phrase is a substring of a kept phrase:
-       - Equal frequency: Keep the longer (kept) phrase.
-       - Lower frequency: Keep the longer (kept) phrase.
-       - Higher frequency: Keep the current phrase if multi-word; otherwise, keep the kept phrase.
-
-    Additionally:
-    - Exclude any phrase containing any custom word.
-
-    Args:
-        phrases_with_counts: List of tuples (phrase, count).
-        custom_words: Set of words to exclude from phrases.
-
-    Returns:
-        Filtered set of phrases.
-    """
-    phrase_count_map = {phrase.lower(): count for phrase, count in phrases_with_counts}
-    
-    sorted_phrases = sorted(
-        phrases_with_counts,
-        key=lambda x: (len(x[0].split()), x[1]),
-        reverse=True
-    )
-    
-    final_phrases = set()
-    kept_phrases = []
-    
-    for current_phrase, current_count in sorted_phrases:
-        should_keep = True
-        current_phrase_lower = current_phrase.lower()
-        
-        if custom_words and any(word in current_phrase_lower.split() for word in {cw.lower() for cw in custom_words}):
-            logger.debug(f"Excluded phrase '{current_phrase}' because it contains a custom word.")
-            continue
-        
-        for kept_phrase in kept_phrases:
-            kept_phrase_lower = kept_phrase.lower()
-            if current_phrase_lower in kept_phrase_lower:
-                kept_count = phrase_count_map.get(kept_phrase_lower, 0)
-                
-                if current_count > kept_count and len(current_phrase.split()) > 1:
-                    final_phrases.discard(kept_phrase)
-                    kept_phrases.remove(kept_phrase)
-                    final_phrases.add(current_phrase)
-                    kept_phrases.append(current_phrase)
-                    logger.debug(f"Replaced '{kept_phrase}' with '{current_phrase}' based on frequency.")
-                else:
-                    should_keep = False
-                    logger.debug(f"Discarded '{current_phrase}' in favor of kept phrase '{kept_phrase}'.")
-                break
-        
-        if should_keep:
-            final_phrases.add(current_phrase)
-            kept_phrases.append(current_phrase)
-            logger.debug(f"Kept phrase '{current_phrase}'.")
-    
-    return final_phrases
 
 def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_lowercase=True, custom_words=None):
     """Extract all relevant phrases and then select the top_n phrases after filtering."""
@@ -461,7 +434,6 @@ def get_top_reddit_phrases():
         custom_words = set(custom_words_input.lower().split(',')) if custom_words_input else set()
         ngram_limit = data.get('ngram_limit', 5)
         apply_remove_lowercase = data.get('apply_remove_lowercase', True)
-        print_scores = data.get('print_scores', False)
 
         # Step 1: Fetch Reddit JSON
         fetch_start = time.time()
@@ -921,3 +893,68 @@ if __name__ == '__main__':
 
 # total_extract_time = time.time() - extract_start
 # logger.info(f"Step 3 - Total extraction time: {total_extract_time:.2f}s")
+
+
+
+# def filter_words(phrases_with_counts: list, custom_words: set = None) -> set:
+#     """
+#     Filter phrases based on substring relationships and frequencies.
+    
+#     Rules:
+#     1. Sort by number of words descending, then by frequency descending.
+#     2. If current phrase is a substring of a kept phrase:
+#        - Equal frequency: Keep the longer (kept) phrase.
+#        - Lower frequency: Keep the longer (kept) phrase.
+#        - Higher frequency: Keep the current phrase if multi-word; otherwise, keep the kept phrase.
+
+#     Additionally:
+#     - Exclude any phrase containing any custom word.
+
+#     Args:
+#         phrases_with_counts: List of tuples (phrase, count).
+#         custom_words: Set of words to exclude from phrases.
+
+#     Returns:
+#         Filtered set of phrases.
+#     """
+#     phrase_count_map = {phrase.lower(): count for phrase, count in phrases_with_counts}
+    
+#     sorted_phrases = sorted(
+#         phrases_with_counts,
+#         key=lambda x: (len(x[0].split()), x[1]),
+#         reverse=True
+#     )
+    
+#     final_phrases = set()
+#     kept_phrases = []
+    
+#     for current_phrase, current_count in sorted_phrases:
+#         should_keep = True
+#         current_phrase_lower = current_phrase.lower()
+        
+#         if custom_words and any(word in current_phrase_lower.split() for word in {cw.lower() for cw in custom_words}):
+#             logger.debug(f"Excluded phrase '{current_phrase}' because it contains a custom word.")
+#             continue
+        
+#         for kept_phrase in kept_phrases:
+#             kept_phrase_lower = kept_phrase.lower()
+#             if current_phrase_lower in kept_phrase_lower:
+#                 kept_count = phrase_count_map.get(kept_phrase_lower, 0)
+                
+#                 if current_count > kept_count and len(current_phrase.split()) > 1:
+#                     final_phrases.discard(kept_phrase)
+#                     kept_phrases.remove(kept_phrase)
+#                     final_phrases.add(current_phrase)
+#                     kept_phrases.append(current_phrase)
+#                     logger.debug(f"Replaced '{kept_phrase}' with '{current_phrase}' based on frequency.")
+#                 else:
+#                     should_keep = False
+#                     logger.debug(f"Discarded '{current_phrase}' in favor of kept phrase '{kept_phrase}'.")
+#                 break
+        
+#         if should_keep:
+#             final_phrases.add(current_phrase)
+#             kept_phrases.append(current_phrase)
+#             logger.debug(f"Kept phrase '{current_phrase}'.")
+    
+#     return final_phrases

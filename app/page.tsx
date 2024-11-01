@@ -269,8 +269,7 @@ export default function Home() {
           top_n: parseInt(topN),
           custom_words: customWords,
           ngram_limit: parseInt(ngramLimit),
-          apply_remove_lowercase: applyRemoveLowercase,
-          print_scores: true
+          apply_remove_lowercase: applyRemoveLowercase
         }),
       });
 
