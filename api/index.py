@@ -6,7 +6,7 @@ import logging
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
-from typing import Tuple
+from typing import Tuple, List
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import nltk
@@ -488,6 +488,41 @@ def get_memory_usage():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024 / 1024
 
+def process_titles(titles: List[str]) -> dict:
+    """Extract common theme from post titles by finding the most frequent consecutive words that appear across titles."""
+    if len(titles) == 1:
+        return {'topic': 'Phrase', 'is_multiple': False}
+    
+    phrase_counts = Counter()
+    
+    for title in titles:
+        clean_title = CLEAN_TEXT_REGEX.sub(' ', title.lower())
+        words = [word for word in clean_title.split() 
+                if (word not in COMMON_STARTERS 
+                    and word not in custom_stop_words
+                    and len(word) > 2)]
+
+        for i in range(len(words)):
+            for length in range(1, 4):
+                if i + length <= len(words):
+                    phrase = ' '.join(words[i:i + length])
+                    phrase_counts[phrase] += 1
+    
+    if not phrase_counts:
+        return {'topic': 'Phrase', 'is_multiple': True}
+
+    best_phrase = max(
+        phrase_counts.items(),
+        key=lambda x: (x[1], len(x[0].split()))
+    )[0]
+    
+    topic = ' '.join(word.title() for word in best_phrase.split())
+    
+    return {
+        'topic': topic,
+        'is_multiple': True
+    }
+
 @app.route('/api/top_phrases', methods=['POST'])
 def get_top_reddit_phrases():
     try:
@@ -499,8 +534,9 @@ def get_top_reddit_phrases():
             return jsonify({"error": "No JSON payload provided"}), 400
 
         urls = data.get('urls', [])
-        if not urls:
-            return jsonify({"error": "URLs are required"}), 400
+        titles = data.get('titles', [])
+        if not urls or not titles:
+            return jsonify({"error": "URLs and titles are required"}), 400
 
         top_n = data.get('top_n', 3)
         custom_words_input = data.get('custom_words', '')
@@ -604,13 +640,19 @@ def get_top_reddit_phrases():
                 'upvotes': upvotes
             })
 
+        topic_info = process_titles(titles)
+
         response_data = {'top_phrases': result}
 
         if len(result) < top_n:
             response_data['warning'] = f"Only found {len(result)} relevant phrases. Add more threads if you'd like to see more!"
 
         logger.info(f"Returning result: {result}")
-        return jsonify(response_data)
+        return jsonify({
+            'phrases': result,
+            'topic': topic_info['topic'],
+            'warning': response_data.get('warning', None)
+        })
 
     except Exception as e:
         error_msg = str(e)

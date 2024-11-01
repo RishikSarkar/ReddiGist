@@ -105,6 +105,9 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [duplicateUrlMessage, setDuplicateUrlMessage] = useState<string | null>(null);
+  const [currentTopic, setCurrentTopic] = useState<string>(() => 
+    loadFromLocalStorage('currentTopic', 'Phrase')
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -157,6 +160,10 @@ export default function Home() {
   useEffect(() => {
     saveToLocalStorage('result', result);
   }, [result]);
+
+  useEffect(() => {
+    saveToLocalStorage('currentTopic', currentTopic);
+  }, [currentTopic]);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -240,9 +247,9 @@ export default function Home() {
   const calculateMaxTime = (totalComments: number, topN: string, ngramLimit: string): number => {
     const maxPossibleTime = 60;
     const minTime = 15;
-    const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime * 0.2;
-    const nFactor = Math.log2(parseInt(topN) + 1) * 0.5;
-    const ngramFactor = (1 + parseInt(ngramLimit) / 10);
+    const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime * 0.1;
+    const nFactor = Math.log2(Math.max(1, parseInt(topN))) * 0.5;
+    const ngramFactor = (parseInt(ngramLimit) / 10);
     
     const calculatedTime = baseTime * nFactor * ngramFactor;
     
@@ -251,17 +258,19 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (selectedPosts.length === 0) return;
     
     setIsLoading(true);
     setResult([]);
     setWarning(null);
     setProgress(0);
-
+    setCurrentTopic('Phrase');
+    
     const totalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
     const calculatedMaxTime = calculateMaxTime(totalComments, topN, ngramLimit);
     setMaxTime(calculatedMaxTime);
-
+    
     const interval = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
@@ -271,17 +280,16 @@ export default function Home() {
         return prev + (100 / (calculatedMaxTime * 10));
       });
     }, 100);
-
+    
     setProgressInterval(interval);
-
+    
     try {
       const response = await fetch('/api/top_phrases', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           urls: selectedPosts.map(post => post.url),
+          titles: selectedPosts.map(post => post.title),
           top_n: parseInt(topN),
           custom_words: customWords,
           ngram_limit: parseInt(ngramLimit),
@@ -295,10 +303,13 @@ export default function Home() {
         throw new Error(data.error || 'Network response was not ok');
       }
 
-      setResult(data.top_phrases);
+      setResult(data.phrases || []);
+      setCurrentTopic(data.topic || 'Phrase');
+      
       if (data.warning) {
         setWarning(data.warning);
       }
+      
       setProgress(100);
     } catch (error) {
       console.error('Error:', error);
@@ -590,9 +601,11 @@ export default function Home() {
         </form>
 
         {/* Results Section */}
-        {result.length > 0 && (
+        {Array.isArray(result) && result.length > 0 && (
           <div className="mt-8 bg-[#1A1A1B] p-6 rounded-lg">
-            <h2 className="text-2xl font-bold mb-4 text-[#D93900] text-center">Top Phrases</h2>
+            <h2 className="text-2xl font-bold mb-4 text-[#D93900] text-center">
+              Top {currentTopic}s
+            </h2>
             {warning && (
               <div className="mb-4 p-3 bg-[#272729] rounded text-gray-400 text-sm">
                 {warning}
