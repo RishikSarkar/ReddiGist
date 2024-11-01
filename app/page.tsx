@@ -104,6 +104,7 @@ export default function Home() {
   const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicateUrlMessage, setDuplicateUrlMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -165,7 +166,15 @@ export default function Home() {
   const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
     const submittedUrl = currentUrl;
-    if (submittedUrl && !selectedPosts.some(post => post.url === submittedUrl)) {
+    
+    if (submittedUrl) {
+      if (selectedPosts.some(post => post.url === submittedUrl)) {
+        setCurrentUrl('');
+        setDuplicateUrlMessage('URL already added...');
+        setTimeout(() => setDuplicateUrlMessage(null), 1000);
+        return;
+      }
+      
       const currentTotalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
       setIsLoadingPost(true);
       
@@ -356,13 +365,19 @@ export default function Home() {
               <input
                 type="text"
                 id="url"
-                value={isLoadingPost ? `Retrieving thread information${'.'.repeat(loadingPostDots)}` : currentUrl}
+                value={
+                  isLoadingPost 
+                    ? `Retrieving thread information${'.'.repeat(loadingPostDots)}`
+                    : duplicateUrlMessage
+                    ? duplicateUrlMessage
+                    : currentUrl
+                }
                 onChange={(e) => setCurrentUrl(e.target.value)}
                 className={`flex-1 p-2 border border-[#333D42] rounded bg-[#272729] focus:border-[#D93900] focus:outline-none ${
-                  isLoadingPost ? 'text-gray-400' : 'text-white'
+                  isLoadingPost || duplicateUrlMessage ? 'text-gray-400' : 'text-white'
                 }`}
                 placeholder="https://www.reddit.com/r/AskReddit/comments/example"
-                disabled={isLoadingPost}
+                disabled={isLoadingPost || duplicateUrlMessage !== null}
               />
               <button
                 type="button"
