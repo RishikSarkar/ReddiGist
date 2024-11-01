@@ -43,7 +43,7 @@ reddit = praw.Reddit(
 )
 
 SUBMISSION_ID_REGEX = re.compile(r'/comments/([^/]+)/')
-CLEAN_TEXT_REGEX = re.compile(r'[^a-zA-Z\s]')
+CLEAN_TEXT_REGEX = re.compile(r'[^a-zA-Z0-9\s]')
 MULTISPACE_REGEX = re.compile(r'\s+')
 NUMERIC_START_REGEX = re.compile(r'^\d+')
 CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$', re.IGNORECASE)
@@ -89,6 +89,11 @@ COMMON_STARTERS = {
     # Other common starters
     'Well', 'Yeah', 'Yes', 'No', 'Sure', 'Like',
     'Just', 'Also', 'Plus', 'First', 'Second', 'Finally'
+}
+
+SPECIAL_PREFIXES = {
+    'Part', 'Chapter', 'Book', 'Volume', 'Season', 'Act', 'Phase', 'Episode',
+    'Series', 'Section', 'Stage', 'Level', 'Grade', 'Tier', 'Generation'
 }
 
 def get_submission_id(url):
@@ -191,7 +196,7 @@ def tokenize_and_filter(text: str) -> Tuple[str, ...]:
     return tuple(token for token in tokens)
 
 def clean_text(text):
-    """Clean text by removing URLs, non-letters, and extra spaces."""
+    """Clean text by removing URLs, non-letters/non-numbers, and extra spaces."""
     text = URL_REGEX.sub('', text)
     text = CLEAN_TEXT_REGEX.sub('', text)
     return MULTISPACE_REGEX.sub(' ', text).strip()
@@ -234,19 +239,57 @@ def preprocess_ngram(ngram: Tuple[str, ...], remove_lowercase: bool = True, cust
         return False
         
     if remove_lowercase:
+        has_number_end = bool(NUMERIC_START_REGEX.match(last_word))
+        is_special_ending = (
+            (last_word == 'I' and len(ngram) > 1 and 
+             ngram[-2] in SPECIAL_PREFIXES) or
+            (last_word.lower() in {word.lower() for word in SPECIAL_PREFIXES} and len(ngram) > 1)
+        )
         return (first_word[0].isupper() and 
-                ((last_word[0].isupper() and last_word != 'I') or bool(NUMERIC_START_REGEX.match(last_word))))
+                (has_number_end or is_special_ending or (last_word[0].isupper() and last_word != 'I')))
             
     if CONNECTING_WORDS_REGEX.search(last_word):
         return False
         
     return True
 
+def normalize_phrase(phrase: str) -> str:
+    words = phrase.split()
+    if not words:
+        return phrase
+        
+    roman_to_num = {'I': '1', 'II': '2', 'III': '3', 'IV': '4', 'V': '5', 
+                    'VI': '6', 'VII': '7', 'VIII': '8', 'IX': '9', 'X': '10'}
+    num_to_roman = {v: k for k, v in roman_to_num.items()}
+    
+    ordinal_pattern = re.compile(r'(\d+)(st|nd|rd|th)')
+    last_word = words[-1]
+    
+    if last_word in SPECIAL_PREFIXES:
+        words = words[:-1]
+        if not words:
+            return phrase
+        last_word = words[-1]
+    
+    if last_word in roman_to_num:
+        words[-1] = roman_to_num[last_word]
+    elif last_word in num_to_roman:
+        words[-1] = num_to_roman[last_word]
+    elif ordinal_pattern.match(last_word):
+        words[-1] = ordinal_pattern.match(last_word).group(1)
+    
+    if len(words) >= 3:
+        acronym = ''.join(word[0].upper() for word in words if word[0].isalpha())
+        if len(acronym) >= 3:
+            return f"{' '.join(words)}|{acronym}"
+            
+    return ' '.join(words)
+
 def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_lowercase=True, custom_words=None):
     """Extract all relevant phrases and then select the top_n phrases after filtering."""
     
     ngram_counts = Counter()
-    phrase_original = {}
+    normalized_to_original = {}
     
     for comment in comments:
         tokens = tokenize_and_filter(comment['text'])
@@ -254,10 +297,11 @@ def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_low
             for ngram in nltk.ngrams(tokens, n):
                 if preprocess_ngram(ngram, apply_remove_lowercase, custom_words):
                     phrase = ' '.join(ngram) if len(ngram) > 1 else ngram[0]
-                    phrase_lower = phrase.lower()
-                    ngram_counts[phrase_lower] += 1
-                    if phrase_lower not in phrase_original or phrase.istitle():
-                        phrase_original[phrase_lower] = phrase
+                    normalized = normalize_phrase(phrase)
+                    ngram_counts[normalized] += 1
+                    
+                    if normalized not in normalized_to_original or phrase.istitle():
+                        normalized_to_original[normalized] = phrase
     
     sorted_phrases = sorted(ngram_counts.items(), key=lambda x: len(x[0].split()), reverse=True)
     
@@ -270,13 +314,13 @@ def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_low
         
         for phrase_lower, count in sorted_phrases:
             if count >= min_occurrences and phrase_lower not in all_common_phrases_lower:
-                phrase = phrase_original[phrase_lower]
+                phrase = normalized_to_original[phrase_lower]
                 if ' ' in phrase:
                     filtered_phrases.append(phrase)
         
         for phrase_lower, count in sorted_phrases:
             if count >= min_occurrences and phrase_lower not in all_common_phrases_lower:
-                phrase = phrase_original[phrase_lower]
+                phrase = normalized_to_original[phrase_lower]
                 if ' ' not in phrase:
                     if not any(phrase_lower in p.lower() for p in filtered_phrases) and \
                        not any(phrase_lower in p.lower() for p in all_common_phrases):
