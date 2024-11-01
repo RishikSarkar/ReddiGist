@@ -553,7 +553,7 @@ export default function Home() {
           <button
             type="submit"
             className="w-full bg-[#D93900] text-white py-3 px-4 rounded-lg hover:bg-[#ff4500] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || selectedPosts.length === 0}
+            disabled={isLoading || (!isMounted ? true : selectedPosts.length === 0)}
           >
             {isLoading ? `Gisting${'.'.repeat(loadingDots)}` : 'Gist'}
           </button>
