@@ -212,16 +212,16 @@ def preprocess_ngram(ngram: Tuple[str, ...], remove_lowercase: bool = True, cust
        - Remove single word 'I' and any single-letter words
        - Remove common sentence starters and pronouns
     """
+    if custom_words and any(word.lower() in custom_words for word in ngram):
+        logger.debug(f"Excluded n-gram '{' '.join(ngram)}' due to presence of a custom word.")
+        return False
+    
     if len(ngram) == 1:
         word = ngram[0]
         if len(word) <= 1 or word in COMMON_STARTERS:
             return False
         return not remove_lowercase or word[0].isupper()
     
-    if custom_words and any(word.lower() in custom_words for word in ngram):
-        logger.debug(f"Excluded n-gram '{' '.join(ngram)}' due to presence of a custom word.")
-        return False
-        
     first_word, last_word = ngram[0], ngram[-1]
 
     if first_word in COMMON_STARTERS:
