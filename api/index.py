@@ -53,13 +53,42 @@ MAX_TOTAL_COMMENTS = 5000
 VERCEL_TIMEOUT = 60
 
 COMMON_STARTERS = {
+    # Personal pronouns and contractions
     'I', 'Im', "I'm", 'Ive', "I've", 'It', "It's", 'Its',
     'He', 'She', 'They', 'We', 'You',
     'Hes', "He's", 'Shes', "She's", 
     'Theyre', "They're", 'Were', "We're", 'Youre', "You're",
+    
+    # Possessive pronouns
+    'My', 'His', 'Her', 'Their', 'Our', 'Your',
+    
+    # Demonstrative pronouns
     'This', 'That', 'These', 'Those',
-    'There', 'Here', 'What', 'When', 'Where', 'Why', 'How',
-    'My', 'His', 'Her', 'Their', 'Our', 'Your'
+    
+    # Question words
+    'What', 'When', 'Where', 'Why', 'How', 'Who', 'Which',
+    
+    # Location/Time words
+    'There', 'Here', 'Now', 'Then',
+    
+    # Articles
+    'A', 'An', 'The',
+    
+    # Conjunctions and transitions
+    'And', 'But', 'Or', 'So', 'Because', 'However',
+    'If', 'Unless', 'Though', 'Although', 'While',
+    
+    # Prepositions
+    'In', 'On', 'At', 'For', 'By', 'To', 'From',
+    'With', 'About', 'Over', 'Under', 'Before', 'After',
+    
+    # Common adverbs
+    'Actually', 'Basically', 'Honestly', 'Usually',
+    'Maybe', 'Probably', 'Definitely', 'Obviously',
+    
+    # Other common starters
+    'Well', 'Yeah', 'Yes', 'No', 'Sure', 'Like',
+    'Just', 'Also', 'Plus', 'First', 'Second', 'Finally'
 }
 
 def get_submission_id(url):
