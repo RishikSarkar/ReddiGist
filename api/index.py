@@ -50,7 +50,17 @@ CONNECTING_WORDS_REGEX = re.compile(r'\b(and|or|of|the|in|on|at|to|for|with)\b$'
 URL_REGEX = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
 MAX_TOTAL_COMMENTS = 5000
-VERCEL_TIMEOUT = 10
+VERCEL_TIMEOUT = 60
+
+COMMON_STARTERS = {
+    'I', 'Im', "I'm", 'Ive', "I've", 'It', "It's", 'Its',
+    'He', 'She', 'They', 'We', 'You',
+    'Hes', "He's", 'Shes', "She's", 
+    'Theyre', "They're", 'Were', "We're", 'Youre', "You're",
+    'This', 'That', 'These', 'Those',
+    'There', 'Here', 'What', 'When', 'Where', 'Why', 'How',
+    'My', 'His', 'Her', 'Their', 'Our', 'Your'
+}
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -121,120 +131,211 @@ def clean_text(text):
     text = CLEAN_TEXT_REGEX.sub('', text)
     return MULTISPACE_REGEX.sub(' ', text).strip()
 
-def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
-    """Extract common n-grams from comments."""
-    ngram_list = []
+def preprocess_ngram(ngram: Tuple[str, ...], remove_lowercase: bool = True, custom_words: set = None) -> bool:
+    """Preprocess and validate an n-gram tuple.
+    
+    Filtering criteria:
+    1. If remove_lowercase is True:
+       - Single words must be uppercase
+       - Multi-word phrases must have both first and last words capitalized OR end with a number
+    2. If remove_lowercase is False:
+       - Check for incomplete phrases
+    3. Always:
+       - Remove phrases starting with numbers
+       - Remove phrases containing any custom word
+       - Remove phrases containing only stopwords
+       - Remove single word 'I' and any single-letter words
+       - Remove common sentence starters and pronouns
+    """
+    if len(ngram) == 1:
+        word = ngram[0]
+        if len(word) <= 1 or word in COMMON_STARTERS:
+            return False
+        return not remove_lowercase or word[0].isupper()
+    
+    if custom_words and any(word.lower() in custom_words for word in ngram):
+        logger.debug(f"Excluded n-gram '{' '.join(ngram)}' due to presence of a custom word.")
+        return False
+        
+    first_word, last_word = ngram[0], ngram[-1]
+
+    if first_word in COMMON_STARTERS:
+        return False
+    
+    if NUMERIC_START_REGEX.match(first_word):
+        return False
+    
+    if all(word.lower() in custom_stop_words for word in ngram):
+        return False
+        
+    if remove_lowercase:
+        return (first_word[0].isupper() and 
+                ((last_word[0].isupper() and last_word != 'I') or bool(NUMERIC_START_REGEX.match(last_word))))
+            
+    if CONNECTING_WORDS_REGEX.search(last_word):
+        return False
+        
+    return True
+
+def filter_words(phrases_with_counts: list, custom_words: set = None) -> set:
+    """
+    Filter phrases based on substring relationships and frequencies.
+    
+    Rules:
+    1. Sort by number of words descending, then by frequency descending.
+    2. If current phrase is a substring of a kept phrase:
+       - Equal frequency: Keep the longer (kept) phrase.
+       - Lower frequency: Keep the longer (kept) phrase.
+       - Higher frequency: Keep the current phrase if multi-word; otherwise, keep the kept phrase.
+
+    Additionally:
+    - Exclude any phrase containing any custom word.
+
+    Args:
+        phrases_with_counts: List of tuples (phrase, count).
+        custom_words: Set of words to exclude from phrases.
+
+    Returns:
+        Filtered set of phrases.
+    """
+    phrase_count_map = {phrase.lower(): count for phrase, count in phrases_with_counts}
+    
+    sorted_phrases = sorted(
+        phrases_with_counts,
+        key=lambda x: (len(x[0].split()), x[1]),
+        reverse=True
+    )
+    
+    final_phrases = set()
+    kept_phrases = []
+    
+    for current_phrase, current_count in sorted_phrases:
+        should_keep = True
+        current_phrase_lower = current_phrase.lower()
+        
+        if custom_words and any(word in current_phrase_lower.split() for word in {cw.lower() for cw in custom_words}):
+            logger.debug(f"Excluded phrase '{current_phrase}' because it contains a custom word.")
+            continue
+        
+        for kept_phrase in kept_phrases:
+            kept_phrase_lower = kept_phrase.lower()
+            if current_phrase_lower in kept_phrase_lower:
+                kept_count = phrase_count_map.get(kept_phrase_lower, 0)
+                
+                if current_count > kept_count and len(current_phrase.split()) > 1:
+                    final_phrases.discard(kept_phrase)
+                    kept_phrases.remove(kept_phrase)
+                    final_phrases.add(current_phrase)
+                    kept_phrases.append(current_phrase)
+                    logger.debug(f"Replaced '{kept_phrase}' with '{current_phrase}' based on frequency.")
+                else:
+                    should_keep = False
+                    logger.debug(f"Discarded '{current_phrase}' in favor of kept phrase '{kept_phrase}'.")
+                break
+        
+        if should_keep:
+            final_phrases.add(current_phrase)
+            kept_phrases.append(current_phrase)
+            logger.debug(f"Kept phrase '{current_phrase}'.")
+    
+    return final_phrases
+
+def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_lowercase=True, custom_words=None):
+    """Extract all relevant phrases and then select the top_n phrases after filtering."""
+    
+    ngram_counts = Counter()
+    phrase_original = {}
     
     for comment in comments:
         tokens = tokenize_and_filter(comment['text'])
-        
-        for n in range(2, ngram_limit + 1):
+        for n in range(1, ngram_limit + 1):
             for ngram in nltk.ngrams(tokens, n):
-                if not all(word.lower() in custom_stop_words for word in ngram):
-                    ngram_list.append(ngram)
+                if preprocess_ngram(ngram, apply_remove_lowercase, custom_words):
+                    phrase = ' '.join(ngram) if len(ngram) > 1 else ngram[0]
+                    phrase_lower = phrase.lower()
+                    ngram_counts[phrase_lower] += 1
+                    if phrase_lower not in phrase_original or phrase.istitle():
+                        phrase_original[phrase_lower] = phrase
     
-    ngram_counts = Counter(ngram_list)
-    common_phrases = [ngram for ngram, count in ngram_counts.items() if count >= min_occurrences]
+    sorted_phrases = sorted(ngram_counts.items(), key=lambda x: len(x[0].split()), reverse=True)
     
-    return common_phrases
-
-def tuple_to_string(phrase_tuple):
-    return ' '.join(phrase_tuple)
-
-def is_meaningful_phrase(phrase):
-    capitalized_count = sum(1 for word in phrase if word[0].isupper())
-    return capitalized_count >= 2
-
-def remove_all_lowercase_phrases(phrases):
-    articles_and_common_words = {
-        'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
-        'For', 'By', 'To', 'From', 'With', 'About', 'Over', 'Under', 'Before', 'After', 
-        'I', 'Ive', 'He', 'Hes', 'She', 'Shes', 'It', 'Its', 'They', 'Theyve', 'We', 'Weve', 'This', 'That', 'These', 'Those', 'Then', 
-        'Now', 'Here', 'There', 'What', 'When', 'Where', 'Why', 'How', 'Who', 'Which'
-    }
+    min_occurrences = min(30, max(math.ceil(len(comments) / 40), 2))
+    all_common_phrases = set()
+    all_common_phrases_lower = set()
     
-    filtered_phrases = []
-    
-    for phrase in phrases:
-        words = phrase.split()
-        capitalized_words = [word for word in words if word[0].isupper() and word not in articles_and_common_words]
-
-        if capitalized_words:
-            filtered_phrases.append(phrase)
-    
-    return filtered_phrases
-
-def post_process_ngrams(phrases):
-    phrases = [tuple_to_string(phrase) for phrase in phrases]
-    processed_phrases = []
-    seen_phrases = set()
-
-    for phrase in phrases:
-        phrase_lower = ' '.join(word.lower() for word in phrase.split())
-
-        if phrase_lower not in seen_phrases:
-            processed_phrases.append(phrase)
-            seen_phrases.add(phrase_lower)
-
-    final_phrases = set()
-    for phrase in processed_phrases:
-        phrase_str = phrase
-
-        if is_meaningful_phrase(phrase_str.split()) or len(phrase_str.split()) > 2:
-            final_phrases.add(phrase_str)
-
-    return final_phrases
-
-def process_phrases_in_single_pass(phrases, custom_words, custom_stop_words):
-    """Combine all filtering steps into a single efficient pass"""
-    processed_phrases = set()
-    seen_phrases_lower = set()
-    grammar_words = {'a', 'an', 'the', 'i'}
-    articles_and_common_words = {
-        'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
-        'For', 'By', 'To', 'From', 'With', 'About', 'Over', 'Under', 'Before', 'After', 
-        'I', 'Ive', 'He', 'Hes', 'She', 'Shes', 'It', 'Its', 'They', 'Theyve', 'We', 'Weve', 
-        'This', 'That', 'These', 'Those', 'Then', 'Now', 'Here', 'There', 'What', 'When', 
-        'Where', 'Why', 'How', 'Who', 'Which'
-    }
-    
-    for phrase in sorted(phrases, key=len, reverse=True):
-        phrase_lower = phrase.lower()
+    while min_occurrences >= 2 and len(all_common_phrases) < top_n:
+        filtered_phrases = []
         
-        if phrase_lower in seen_phrases_lower:
-            continue
-            
-        words = phrase.split()
+        for phrase_lower, count in sorted_phrases:
+            if count >= min_occurrences and phrase_lower not in all_common_phrases_lower:
+                phrase = phrase_original[phrase_lower]
+                if ' ' in phrase:
+                    filtered_phrases.append(phrase)
         
-        if (len(words) <= 2 or
-            any(word.lower() in custom_words for word in words) or
-            all(word.lower() in custom_stop_words for word in words) or
-            is_incomplete_phrase(phrase) or
-            any(phrase_lower in other.lower() for other in processed_phrases)):
+        for phrase_lower, count in sorted_phrases:
+            if count >= min_occurrences and phrase_lower not in all_common_phrases_lower:
+                phrase = phrase_original[phrase_lower]
+                if ' ' not in phrase:
+                    if not any(phrase_lower in p.lower() for p in filtered_phrases) and \
+                       not any(phrase_lower in p.lower() for p in all_common_phrases):
+                        filtered_phrases.append(phrase)
+        
+        if not filtered_phrases:
+            min_occurrences -= 1
             continue
         
-        capitalized_words = [word for word in words if word[0].isupper() and word not in articles_and_common_words]
-        if len(capitalized_words) < 2:
-            continue
+        filtered_phrases_sorted = sorted(
+            filtered_phrases,
+            key=lambda phrase: ngram_counts[phrase.lower()],
+            reverse=True
+        )
+        
+        for phrase in filtered_phrases_sorted:
+            phrase_lower = phrase.lower()
             
-        if words and NUMERIC_START_REGEX.match(words[0]):
-            words = words[1:]
-        if words and words[0].lower() in grammar_words:
-            words = words[1:]
-        if words and words[-1].lower() in grammar_words:
-            words = words[:-1]
+            phrases_to_remove = set()
+            skip_current = False
             
-        if words and len(words) >= 2:
-            cleaned_phrase = ' '.join(words)
-            processed_phrases.add(cleaned_phrase)
-            seen_phrases_lower.add(cleaned_phrase.lower())
+            for existing in all_common_phrases:
+                existing_lower = existing.lower()
+                
+                if existing_lower in phrase_lower or phrase_lower in existing_lower:
+                    if len(phrase_lower.split()) > len(existing_lower.split()):
+                        phrases_to_remove.add(existing)
+                        all_common_phrases_lower.remove(existing_lower)
+                    else:
+                        skip_current = True
+                        break
             
-    return processed_phrases
+            if skip_current:
+                continue
+                
+            all_common_phrases.difference_update(phrases_to_remove)
+            
+            if len(all_common_phrases) < top_n or phrases_to_remove:
+                all_common_phrases.add(phrase)
+                all_common_phrases_lower.add(phrase_lower)
+        
+        logger.info(f"Applied min_occurrences={min_occurrences}, found {len(filtered_phrases_sorted)} phrases.")
 
-def final_post_process(phrases, custom_words):
-    """Single pass processing for all phrases"""
-    string_phrases = [tuple_to_string(phrase) if isinstance(phrase, tuple) else phrase for phrase in phrases]
-    return process_phrases_in_single_pass(string_phrases, custom_words, custom_stop_words)
+        min_occurrences -= 1
+
+    if not all_common_phrases:
+        logger.warning("No common phrases found. Returning all unique words.")
+        all_words = set()
+        for comment in comments:
+            all_words.update(comment['text'].split())
+        all_common_phrases = set(list(all_words)[:top_n])
+    
+    top_phrases = sorted(
+        all_common_phrases,
+        key=lambda phrase: ngram_counts[phrase.lower()],
+        reverse=True
+    )[:top_n]
+    
+    logger.info(f"Selected top {len(top_phrases)} phrases based on frequency.")
+    
+    return top_phrases
 
 def find_phrase_positions(comment_text, phrases):
     """Find sequential positions of phrases based on order of appearance"""
@@ -419,66 +520,15 @@ def get_top_reddit_phrases():
         # Step 3: Extract Common Phrases
         extract_start = time.time()
         logger.info("Step (3/4): Extracting common phrases...")
-        min_occurrences = min(
-            30,
-            max(math.ceil(len(all_comments) / 40), 2)
+        
+        all_common_phrases = extract_filtered_phrases(
+            comments=all_comments,
+            ngram_limit=ngram_limit,
+            top_n=top_n,
+            apply_remove_lowercase=apply_remove_lowercase,
+            custom_words=custom_words
         )
-        all_common_phrases = set()
-        all_common_phrases_lower = set()
-
-        while min_occurrences >= 2:
-            phrases_start = time.time()
-            common_phrases = extract_common_phrases(all_comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
-            extract_time = time.time() - phrases_start
-            
-            post_start = time.time()
-            common_phrases = post_process_ngrams(common_phrases)
-            common_phrases = final_post_process(common_phrases, custom_words)
-            if apply_remove_lowercase:
-                common_phrases = remove_all_lowercase_phrases(common_phrases)
-            post_time = time.time() - post_start
-            
-            logger.info(f"  Iteration (min_occurrences={min_occurrences}):")
-            logger.info(f"    - Extract time: {extract_time:.2f}s")
-            logger.info(f"    - Post-process time: {post_time:.2f}s")
-            logger.info(f"    - Phrases found: {len(common_phrases)}")
-
-            clean_phrases = set()
-            seen_phrases_lower = set()
-            
-            sorted_phrases = sorted(common_phrases, key=len, reverse=True)
-            
-            for phrase in sorted_phrases:
-                if (not is_incomplete_phrase(phrase) and 
-                    phrase.lower() not in seen_phrases_lower and
-                    not any(phrase.lower() in existing.lower() for existing in clean_phrases)):
-                    
-                    clean_phrases.add(phrase)
-                    seen_phrases_lower.add(phrase.lower())
-                    
-                    if len(clean_phrases) >= top_n:
-                        break
-
-            new_phrases = set(phrase for phrase in clean_phrases 
-                             if phrase.lower() not in all_common_phrases_lower)
-            
-            all_common_phrases.update(new_phrases)
-            all_common_phrases_lower.update(phrase.lower() for phrase in new_phrases)
-
-            logger.info(f"Found {len(new_phrases)} unique phrases with min_occurrences={min_occurrences}. Total: {len(all_common_phrases)} phrases.")
-
-            if len(all_common_phrases) >= top_n:
-                break
-
-            min_occurrences -= 1
-
-        if not all_common_phrases:
-            logger.warning("No common phrases found. Returning all unique words.")
-            all_words = set()
-            for comment in all_comments:
-                all_words.update(comment['text'].split())
-            all_common_phrases = list(all_words)[:top_n]
-
+        
         total_extract_time = time.time() - extract_start
         logger.info(f"Step 3 - Total extraction time: {total_extract_time:.2f}s")
 
@@ -687,3 +737,187 @@ if __name__ == '__main__':
 #                 phrase_upvote_map[phrase] += comment['score']
 
 #     return phrase_upvote_map
+
+
+
+
+# def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
+#     """Extract common n-grams from comments."""
+#     ngram_list = []
+    
+#     for comment in comments:
+#         tokens = tokenize_and_filter(comment['text'])
+        
+#         for n in range(2, ngram_limit + 1):
+#             for ngram in nltk.ngrams(tokens, n):
+#                 if not all(word.lower() in custom_stop_words for word in ngram):
+#                     ngram_list.append(ngram)
+    
+#     ngram_counts = Counter(ngram_list)
+#     common_phrases = [ngram for ngram, count in ngram_counts.items() if count >= min_occurrences]
+    
+#     return common_phrases
+
+# def tuple_to_string(phrase_tuple):
+#     return ' '.join(phrase_tuple)
+
+# def is_meaningful_phrase(phrase):
+#     capitalized_count = sum(1 for word in phrase if word[0].isupper())
+#     return capitalized_count >= 2
+
+# def remove_all_lowercase_phrases(phrases):
+#     common_words = {
+#         'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
+#         'For', 'By', 'To', 'From', 'With', 'About', 'Over', 'Under', 'Before', 'After', 
+#         'I', 'Ive', 'He', 'Hes', 'She', 'Shes', 'It', 'Its', 'They', 'Theyve', 'We', 'Weve', 'This', 'That', 'These', 'Those', 'Then', 
+#         'Now', 'Here', 'There', 'What', 'When', 'Where', 'Why', 'How', 'Who', 'Which'
+#     }
+    
+#     filtered_phrases = []
+    
+#     for phrase in phrases:
+#         words = phrase.split()
+#         capitalized_words = [word for word in words if word[0].isupper() and word not in common_words]
+
+#         if capitalized_words:
+#             filtered_phrases.append(phrase)
+    
+#     return filtered_phrases
+
+# def post_process_ngrams(phrases):
+#     phrases = [tuple_to_string(phrase) for phrase in phrases]
+#     processed_phrases = []
+#     seen_phrases = set()
+
+#     for phrase in phrases:
+#         phrase_lower = ' '.join(word.lower() for word in phrase.split())
+
+#         if phrase_lower not in seen_phrases:
+#             processed_phrases.append(phrase)
+#             seen_phrases.add(phrase_lower)
+
+#     final_phrases = set()
+#     for phrase in processed_phrases:
+#         phrase_str = phrase
+
+#         if is_meaningful_phrase(phrase_str.split()) or len(phrase_str.split()) > 2:
+#             final_phrases.add(phrase_str)
+
+#     return final_phrases
+
+# def process_phrases_in_single_pass(phrases, custom_words, custom_stop_words):
+#     """Combine all filtering steps into a single efficient pass"""
+#     processed_phrases = set()
+#     seen_phrases_lower = set()
+#     grammar_words = {'a', 'an', 'the', 'i'}
+#     articles_and_common_words = {
+#         'A', 'An', 'The', 'And', 'But', 'Or', 'So', 'Because', 'However', 'If', 'In', 'On', 'At', 
+#         'For', 'By', 'To', 'From', 'With', 'About', 'Over', 'Under', 'Before', 'After', 
+#         'I', 'Ive', 'He', 'Hes', 'She', 'Shes', 'It', 'Its', 'They', 'Theyve', 'We', 'Weve', 
+#         'This', 'That', 'These', 'Those', 'Then', 'Now', 'Here', 'There', 'What', 'When', 
+#         'Where', 'Why', 'How', 'Who', 'Which'
+#     }
+    
+#     for phrase in sorted(phrases, key=len, reverse=True):
+#         phrase_lower = phrase.lower()
+        
+#         if phrase_lower in seen_phrases_lower:
+#             continue
+            
+#         words = phrase.split()
+        
+#         if (len(words) <= 2 or
+#             any(word.lower() in custom_words for word in words) or
+#             all(word.lower() in custom_stop_words for word in words) or
+#             is_incomplete_phrase(phrase) or
+#             any(phrase_lower in other.lower() for other in processed_phrases)):
+#             continue
+        
+#         capitalized_words = [word for word in words if word[0].isupper() and word not in articles_and_common_words]
+#         if len(capitalized_words) < 2:
+#             continue
+            
+#         if words and NUMERIC_START_REGEX.match(words[0]):
+#             words = words[1:]
+#         if words and words[0].lower() in grammar_words:
+#             words = words[1:]
+#         if words and words[-1].lower() in grammar_words:
+#             words = words[:-1]
+            
+#         if words and len(words) >= 2:
+#             cleaned_phrase = ' '.join(words)
+#             processed_phrases.add(cleaned_phrase)
+#             seen_phrases_lower.add(cleaned_phrase.lower())
+            
+#     return processed_phrases
+
+# def final_post_process(phrases, custom_words):
+#     """Single pass processing for all phrases"""
+#     string_phrases = [tuple_to_string(phrase) if isinstance(phrase, tuple) else phrase for phrase in phrases]
+#     return process_phrases_in_single_pass(string_phrases, custom_words, custom_stop_words)
+
+
+# extract_start = time.time()
+# logger.info("Step (3/4): Extracting common phrases...")
+# min_occurrences = min(
+#     30,
+#     max(math.ceil(len(all_comments) / 40), 2)
+# )
+# all_common_phrases = set()
+# all_common_phrases_lower = set()
+
+# while min_occurrences >= 2:
+#     phrases_start = time.time()
+#     common_phrases = extract_common_phrases(all_comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
+#     extract_time = time.time() - phrases_start
+    
+#     post_start = time.time()
+#     common_phrases = post_process_ngrams(common_phrases)
+#     common_phrases = final_post_process(common_phrases, custom_words)
+#     if apply_remove_lowercase:
+#         common_phrases = remove_all_lowercase_phrases(common_phrases)
+#     post_time = time.time() - post_start
+    
+#     logger.info(f"  Iteration (min_occurrences={min_occurrences}):")
+#     logger.info(f"    - Extract time: {extract_time:.2f}s")
+#     logger.info(f"    - Post-process time: {post_time:.2f}s")
+#     logger.info(f"    - Phrases found: {len(common_phrases)}")
+
+#     clean_phrases = set()
+#     seen_phrases_lower = set()
+    
+#     sorted_phrases = sorted(common_phrases, key=len, reverse=True)
+    
+#     for phrase in sorted_phrases:
+#         if (not is_incomplete_phrase(phrase) and 
+#             phrase.lower() not in seen_phrases_lower and
+#             not any(phrase.lower() in existing.lower() for existing in clean_phrases)):
+            
+#             clean_phrases.add(phrase)
+#             seen_phrases_lower.add(phrase.lower())
+            
+#             if len(clean_phrases) >= top_n:
+#                 break
+
+#     new_phrases = set(phrase for phrase in clean_phrases 
+#                      if phrase.lower() not in all_common_phrases_lower)
+    
+#     all_common_phrases.update(new_phrases)
+#     all_common_phrases_lower.update(phrase.lower() for phrase in new_phrases)
+
+#     logger.info(f"Found {len(new_phrases)} unique phrases with min_occurrences={min_occurrences}. Total: {len(all_common_phrases)} phrases.")
+
+#     if len(all_common_phrases) >= top_n:
+#         break
+
+#     min_occurrences -= 1
+
+# if not all_common_phrases:
+#     logger.warning("No common phrases found. Returning all unique words.")
+#     all_words = set()
+#     for comment in all_comments:
+#         all_words.update(comment['text'].split())
+#     all_common_phrases = list(all_words)[:top_n]
+
+# total_extract_time = time.time() - extract_start
+# logger.info(f"Step 3 - Total extraction time: {total_extract_time:.2f}s")
