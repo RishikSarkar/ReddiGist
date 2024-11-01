@@ -31,27 +31,27 @@ interface TooltipContent {
 const tooltips: Record<string, TooltipContent> = {
   urlInput: {
     title: "Adding Reddit URLs",
-    description: "Paste Reddit thread URLs here. You can add multiple threads up to a total of 5,000 comments. The tool will analyze all comments to find common meaningful phrases."
+    description: "Add Reddit thread URLs to analyze their comments for common meaningful phrases.\n\nHint: If adding a thread would exceed 5,000 total comments, only the top comments will be analyzed to stay within API limits."
   },
   topN: {
     title: "Number of Results",
-    description: "How many top phrases to show in the results. Higher numbers will find more phrases but may include less relevant ones."
+    description: "How many top phrases to show in the results.\n\nHint: Higher numbers may include less relevant phrases. Note that top 3 items from a top 10 list might differ from a top 3 list due to how phrases are scored."
   },
   ngramLimit: {
     title: "Max Words per Phrase",
-    description: "Maximum number of words to include in each phrase. Higher limits can catch longer phrases but may take longer to process."
+    description: "Maximum number of words to include in each phrase. Higher limits can catch longer phrases but may take longer to process.\n\nHint: Use 1-2 for lists of names (e.g., characters, actors), and 5 for longer phrases (e.g., movie titles, quotes)."
   },
   customWords: {
     title: "Custom Words to Exclude",
-    description: "Add comma-separated words to exclude from results. Useful for filtering out common phrases specific to the subreddit or topic."
+    description: "Add comma-separated words to exclude from results. Useful for filtering out common phrases specific to the subreddit or topic.\n\nHint: If 'Netflix Original Series' keeps appearing but isn't relevant, adding 'Netflix' will remove all phrases containing that word."
   },
   removeLowercase: {
     title: "Remove Lowercase Phrases",
-    description: "Only keep phrases with at least two capitalized words. Helps focus on proper nouns and significant terms while filtering out common phrases."
+    description: "Only keep phrases where both first and last words are capitalized. Helps focus on names, titles, and proper nouns.\n\nHint: Turn off in threads with common phrases or inconsistent capitalization."
   },
   showStats: {
     title: "Show Statistics",
-    description: "Display vote counts and relevance scores for each phrase. Votes show total upvotes, while Score indicates phrase relevance based on votes and comment position."
+    description: "Display vote counts and relevance scores for each phrase.\n\nHint: Phrases score slightly higher when appearing early in comments, helping catch top 10 lists while valuing regular discussion."
   }
 };
 
@@ -60,7 +60,13 @@ const InfoTooltip: React.FC<{ content: TooltipContent }> = ({ content }) => (
     <div className="text-gray-500 hover:text-gray-400 cursor-help text-xs">ⓘ</div>
     <div className="invisible group-hover:visible absolute z-10 w-64 p-4 mt-2 bg-[#272729] rounded-lg shadow-lg border border-[#333D42] text-sm -left-20">
       <h3 className="font-semibold mb-2 text-[#D93900]">{content.title}</h3>
-      <p className="text-gray-300">{content.description}</p>
+      {content.description.split('\n\nHint: ').map((text, index) => (
+        index === 0 ? (
+          <p key="description" className="text-gray-300 mb-2">{text}</p>
+        ) : (
+          <p key="hint" className="text-gray-400 text-xs italic">Hint: {text}</p>
+        )
+      ))}
     </div>
   </div>
 );
