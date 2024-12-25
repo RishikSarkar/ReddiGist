@@ -74,30 +74,14 @@ const InfoTooltip: React.FC<{ content: TooltipContent }> = ({ content }) => (
 
 export default function Home() {
   const [currentUrl, setCurrentUrl] = useState('');
-  const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>(() => 
-    loadFromLocalStorage('selectedPosts', [])
-  );
-  const [topN, setTopN] = useState(() => 
-    loadFromLocalStorage('topN', DEFAULT_TOP_N)
-  );
-  const [customWords, setCustomWords] = useState(() => 
-    loadFromLocalStorage('customWords', '')
-  );
-  const [minNgram, setMinNgram] = useState(() => 
-    loadFromLocalStorage('minNgram', DEFAULT_MIN_NGRAM)
-  );
-  const [maxNgram, setMaxNgram] = useState(() => 
-    loadFromLocalStorage('maxNgram', DEFAULT_MAX_NGRAM)
-  );
-  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(() => 
-    loadFromLocalStorage('removeLowercase', DEFAULT_REMOVE_LOWERCASE)
-  );
-  const [printScores, setPrintScores] = useState(() => 
-    loadFromLocalStorage('printScores', DEFAULT_PRINT_SCORES)
-  );
-  const [result, setResult] = useState<PhraseResult[]>(() => 
-    loadFromLocalStorage('result', [])
-  );
+  const [selectedPosts, setSelectedPosts] = useState<RedditPost[]>([]);
+  const [topN, setTopN] = useState(DEFAULT_TOP_N);
+  const [customWords, setCustomWords] = useState('');
+  const [minNgram, setMinNgram] = useState(DEFAULT_MIN_NGRAM);
+  const [maxNgram, setMaxNgram] = useState(DEFAULT_MAX_NGRAM);
+  const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(DEFAULT_REMOVE_LOWERCASE);
+  const [printScores, setPrintScores] = useState(DEFAULT_PRINT_SCORES);
+  const [result, setResult] = useState<PhraseResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState(0);
@@ -109,9 +93,7 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [duplicateUrlMessage, setDuplicateUrlMessage] = useState<string | null>(null);
-  const [currentTopic, setCurrentTopic] = useState<string>(() => 
-    loadFromLocalStorage('currentTopic', 'Phrase')
-  );
+  const [currentTopic, setCurrentTopic] = useState('Phrase');
 
   useEffect(() => {
     setIsMounted(true);
@@ -138,40 +120,16 @@ export default function Home() {
   }, [isLoading, isLoadingPost]);
 
   useEffect(() => {
-    saveToLocalStorage('selectedPosts', selectedPosts);
-  }, [selectedPosts]);
-
-  useEffect(() => {
-    saveToLocalStorage('topN', topN);
-  }, [topN]);
-
-  useEffect(() => {
-    saveToLocalStorage('customWords', customWords);
-  }, [customWords]);
-
-  useEffect(() => {
-    saveToLocalStorage('minNgram', minNgram);
-  }, [minNgram]);
-
-  useEffect(() => {
-    saveToLocalStorage('maxNgram', maxNgram);
-  }, [maxNgram]);
-
-  useEffect(() => {
-    saveToLocalStorage('removeLowercase', applyRemoveLowercase);
-  }, [applyRemoveLowercase]);
-
-  useEffect(() => {
-    saveToLocalStorage('printScores', printScores);
-  }, [printScores]);
-
-  useEffect(() => {
-    saveToLocalStorage('result', result);
-  }, [result]);
-
-  useEffect(() => {
-    saveToLocalStorage('currentTopic', currentTopic);
-  }, [currentTopic]);
+    setSelectedPosts(loadFromLocalStorage('selectedPosts', []));
+    setTopN(loadFromLocalStorage('topN', DEFAULT_TOP_N));
+    setCustomWords(loadFromLocalStorage('customWords', ''));
+    setMinNgram(loadFromLocalStorage('minNgram', DEFAULT_MIN_NGRAM));
+    setMaxNgram(loadFromLocalStorage('maxNgram', DEFAULT_MAX_NGRAM));
+    setApplyRemoveLowercase(loadFromLocalStorage('removeLowercase', DEFAULT_REMOVE_LOWERCASE));
+    setPrintScores(loadFromLocalStorage('printScores', DEFAULT_PRINT_SCORES));
+    setResult(loadFromLocalStorage('result', []));
+    setCurrentTopic(loadFromLocalStorage('currentTopic', 'Phrase'));
+  }, []);
 
   const extractTitleFromUrl = (url: string): string => {
     const parts = url.split('/');
@@ -699,15 +657,25 @@ export default function Home() {
 }
 
 const saveToLocalStorage = (key: string, value: any) => {
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
     localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Error saving to localStorage for key "${key}":`, error);
   }
 };
 
 const loadFromLocalStorage = (key: string, defaultValue: any) => {
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') {
+    return defaultValue;
+  }
+  try {
     const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : defaultValue;
+  } catch (error) {
+    console.error(`Error loading from localStorage for key "${key}":`, error);
+    return defaultValue;
   }
-  return defaultValue;
 };
