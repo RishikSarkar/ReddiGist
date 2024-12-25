@@ -15,7 +15,6 @@ from nltk.corpus import stopwords
 import praw
 from dotenv import load_dotenv
 import psutil
-from supabase import create_client, Client
 
 load_dotenv()
 
@@ -101,14 +100,16 @@ STATS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'se
 os.makedirs(STATS_DIR, exist_ok=True)
 STATS_FILE = os.path.join(STATS_DIR, 'performance_metrics.csv')
 
-supabase: Client = create_client(
-    os.getenv('SUPABASE_URL', ''),
-    os.getenv('SUPABASE_KEY', '')
-)
-
 def log_performance_metrics(metrics):
     """Log performance metrics to Supabase"""
     try:
+        from supabase import create_client
+        
+        supabase = create_client(
+            os.getenv('SUPABASE_URL', ''),
+            os.getenv('SUPABASE_KEY', '')
+        )
+        
         supabase.table('performance_metrics').insert({
             'total_comments': metrics['total_comments'],
             'num_urls': metrics['num_urls'],
