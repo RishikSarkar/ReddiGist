@@ -19,7 +19,8 @@ const MAX_THREADS = 5;
 const MAX_TOTAL_COMMENTS = 5000;
 
 const DEFAULT_TOP_N = '3';
-const DEFAULT_NGRAM_LIMIT = '5';
+const DEFAULT_MIN_NGRAM = '1';
+const DEFAULT_MAX_NGRAM = '5';
 const DEFAULT_REMOVE_LOWERCASE = true;
 const DEFAULT_PRINT_SCORES = false;
 
@@ -37,9 +38,9 @@ const tooltips: Record<string, TooltipContent> = {
     title: "Number of Results",
     description: "How many top phrases to show in the results.\n\nHint: Higher numbers may include less relevant phrases. Note that top 3 items from a top 10 list might differ from a top 3 list due to how phrases are scored."
   },
-  ngramLimit: {
-    title: "Max Words per Phrase",
-    description: "Maximum number of words to include in each phrase. Higher limits can catch longer phrases but may take longer to process.\n\nHint: Use 1-2 for lists of names (e.g., characters, actors), and 5 for longer phrases (e.g., movie titles, quotes)."
+  maxNgram: {
+    title: "Phrase Length",
+    description: "Set the minimum and maximum number of words for each phrase.\n\nHint: Use 1-2 for lists of names (e.g., characters, actors), and 2-5 for longer phrases (e.g., movie titles, quotes)."
   },
   customWords: {
     title: "Custom Words to Exclude",
@@ -82,8 +83,11 @@ export default function Home() {
   const [customWords, setCustomWords] = useState(() => 
     loadFromLocalStorage('customWords', '')
   );
-  const [ngramLimit, setNgramLimit] = useState(() => 
-    loadFromLocalStorage('ngramLimit', DEFAULT_NGRAM_LIMIT)
+  const [minNgram, setMinNgram] = useState(() => 
+    loadFromLocalStorage('minNgram', DEFAULT_MIN_NGRAM)
+  );
+  const [maxNgram, setMaxNgram] = useState(() => 
+    loadFromLocalStorage('maxNgram', DEFAULT_MAX_NGRAM)
   );
   const [applyRemoveLowercase, setApplyRemoveLowercase] = useState(() => 
     loadFromLocalStorage('removeLowercase', DEFAULT_REMOVE_LOWERCASE)
@@ -146,8 +150,12 @@ export default function Home() {
   }, [customWords]);
 
   useEffect(() => {
-    saveToLocalStorage('ngramLimit', ngramLimit);
-  }, [ngramLimit]);
+    saveToLocalStorage('minNgram', minNgram);
+  }, [minNgram]);
+
+  useEffect(() => {
+    saveToLocalStorage('maxNgram', maxNgram);
+  }, [maxNgram]);
 
   useEffect(() => {
     saveToLocalStorage('removeLowercase', applyRemoveLowercase);
@@ -244,12 +252,12 @@ export default function Home() {
     setSelectedPosts(selectedPosts.filter(post => post.url !== urlToRemove));
   };
 
-  const calculateMaxTime = (totalComments: number, topN: string, ngramLimit: string): number => {
+  const calculateMaxTime = (totalComments: number, topN: string, maxNgram: string): number => {
     const maxPossibleTime = 60;
     const minTime = 15;
     const baseTime = Math.sqrt(totalComments / MAX_TOTAL_COMMENTS) * maxPossibleTime * 0.1;
     const nFactor = Math.log2(Math.max(1, parseInt(topN))) * 0.5;
-    const ngramFactor = (parseInt(ngramLimit) / 10);
+    const ngramFactor = (parseInt(maxNgram) / 10);
     
     const calculatedTime = baseTime * nFactor * ngramFactor;
     
@@ -268,7 +276,7 @@ export default function Home() {
     setCurrentTopic('Phrase');
     
     const totalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
-    const calculatedMaxTime = calculateMaxTime(totalComments, topN, ngramLimit);
+    const calculatedMaxTime = calculateMaxTime(totalComments, topN, maxNgram);
     setMaxTime(calculatedMaxTime);
     
     const interval = setInterval(() => {
@@ -292,7 +300,8 @@ export default function Home() {
           titles: selectedPosts.map(post => post.title),
           top_n: parseInt(topN),
           custom_words: customWords,
-          ngram_limit: parseInt(ngramLimit),
+          min_ngram: parseInt(minNgram),
+          max_ngram: parseInt(maxNgram),
           apply_remove_lowercase: applyRemoveLowercase
         }),
       });
@@ -331,7 +340,8 @@ export default function Home() {
   const handleResetDefaults = () => {
     localStorage.clear();
     setTopN(DEFAULT_TOP_N);
-    setNgramLimit(DEFAULT_NGRAM_LIMIT);
+    setMinNgram(DEFAULT_MIN_NGRAM);
+    setMaxNgram(DEFAULT_MAX_NGRAM);
     setCustomWords('');
     setApplyRemoveLowercase(DEFAULT_REMOVE_LOWERCASE);
     setPrintScores(DEFAULT_PRINT_SCORES);
@@ -488,34 +498,71 @@ export default function Home() {
                 </div>
               </div>
               <div>
-                <label htmlFor="ngramLimit" className="mb-2 flex items-center">
-                  <span className="font-semibold">Max Words per Phrase</span>
-                  <InfoTooltip content={tooltips.ngramLimit} />
+                <label htmlFor="maxNgram" className="mb-2 flex items-center">
+                  <span className="font-semibold">Phrase Length</span>
+                  <InfoTooltip content={tooltips.maxNgram} />
                 </label>
-                <div className="relative flex">
-                  <input
-                    type="number"
-                    id="ngramLimit"
-                    value={ngramLimit}
-                    onChange={(e) => setNgramLimit(e.target.value)}
-                    className="w-full p-2 border border-[#333D42] rounded bg-[#272729] text-white focus:border-[#D93900] focus:outline-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
-                    min="1"
-                  />
-                  <div className="absolute right-0 h-full flex flex-col border-l border-[#333D42]">
-                    <button
-                      type="button"
-                      onClick={() => setNgramLimit(String(parseInt(ngramLimit) + 1))}
-                      className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-tr text-[10px]"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNgramLimit(String(Math.max(1, parseInt(ngramLimit) - 1)))}
-                      className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-br text-[10px]"
-                    >
-                      ▼
-                    </button>
+                <div className="flex items-center space-x-2">
+                  <div className="relative flex flex-1">
+                    <input
+                      type="number"
+                      id="minNgram"
+                      value={minNgram}
+                      onChange={(e) => {
+                        const newValue = Math.min(parseInt(e.target.value), parseInt(maxNgram));
+                        setMinNgram(String(newValue));
+                      }}
+                      className="w-full p-2 border border-[#333D42] rounded-l bg-[#272729] text-white focus:border-[#D93900] focus:outline-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
+                      min="1"
+                      placeholder="Min"
+                    />
+                    <div className="absolute right-0 h-full flex flex-col border-l border-[#333D42]">
+                      <button
+                        type="button"
+                        onClick={() => setMinNgram(String(Math.min(parseInt(minNgram) + 1, parseInt(maxNgram))))}
+                        className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-tr text-[10px]"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMinNgram(String(Math.max(1, parseInt(minNgram) - 1)))}
+                        className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-br text-[10px]"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-gray-400">to</span>
+                  <div className="relative flex flex-1">
+                    <input
+                      type="number"
+                      id="maxNgram"
+                      value={maxNgram}
+                      onChange={(e) => {
+                        const newValue = Math.max(parseInt(e.target.value), parseInt(minNgram));
+                        setMaxNgram(String(newValue));
+                      }}
+                      className="w-full p-2 border border-[#333D42] rounded-r bg-[#272729] text-white focus:border-[#D93900] focus:outline-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
+                      min={minNgram}
+                      placeholder="Max"
+                    />
+                    <div className="absolute right-0 h-full flex flex-col border-l border-[#333D42]">
+                      <button
+                        type="button"
+                        onClick={() => setMaxNgram(String(parseInt(maxNgram) + 1))}
+                        className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-tr text-[10px]"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMaxNgram(String(Math.max(parseInt(minNgram), parseInt(maxNgram) - 1)))}
+                        className="flex-1 px-2 py-0.25 text-gray-400 hover:text-[#D93900] hover:bg-[#1A1A1B] rounded-br text-[10px]"
+                      >
+                        ▼
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -604,7 +651,7 @@ export default function Home() {
         {Array.isArray(result) && result.length > 0 && (
           <div className="mt-8 bg-[#1A1A1B] p-6 rounded-lg">
             <h2 className="text-2xl font-bold mb-4 text-[#D93900] text-center">
-              Top {currentTopic}s
+              Top {currentTopic}{currentTopic.toLowerCase().endsWith('s') ? '' : 's'}
             </h2>
             {warning && (
               <div className="mb-4 p-3 bg-[#272729] rounded text-gray-400 text-sm">

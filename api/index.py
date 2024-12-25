@@ -15,6 +15,7 @@ from nltk.corpus import stopwords
 import praw
 from dotenv import load_dotenv
 import psutil
+from supabase import create_client, Client
 
 load_dotenv()
 
@@ -95,6 +96,35 @@ SPECIAL_PREFIXES = {
     'Part', 'Chapter', 'Book', 'Volume', 'Season', 'Act', 'Phase', 'Episode',
     'Series', 'Section', 'Stage', 'Level', 'Grade', 'Tier', 'Generation'
 }
+
+STATS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'searchstats')
+os.makedirs(STATS_DIR, exist_ok=True)
+STATS_FILE = os.path.join(STATS_DIR, 'performance_metrics.csv')
+
+supabase: Client = create_client(
+    os.getenv('SUPABASE_URL', ''),
+    os.getenv('SUPABASE_KEY', '')
+)
+
+def log_performance_metrics(metrics):
+    """Log performance metrics to Supabase"""
+    try:
+        supabase.table('performance_metrics').insert({
+            'total_comments': metrics['total_comments'],
+            'num_urls': metrics['num_urls'],
+            'top_n': metrics['top_n'],
+            'min_ngram': metrics['min_ngram'],
+            'max_ngram': metrics['max_ngram'],
+            'custom_words': metrics['custom_words'],
+            'total_time': metrics['total_time'],
+            'fetch_time': metrics['fetch_time'],
+            'clean_time': metrics['clean_time'],
+            'extract_time': metrics['extract_time'],
+            'score_time': metrics['score_time'],
+            'memory_usage': metrics['memory_used']
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log metrics to Supabase: {e}")
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -285,7 +315,7 @@ def normalize_phrase(phrase: str) -> str:
             
     return ' '.join(words)
 
-def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_lowercase=True, custom_words=None):
+def extract_filtered_phrases(comments, min_ngram, max_ngram, top_n, apply_remove_lowercase, custom_words):
     """Extract all relevant phrases and then select the top_n phrases after filtering."""
     
     ngram_counts = Counter()
@@ -293,7 +323,7 @@ def extract_filtered_phrases(comments, ngram_limit=5, top_n=10, apply_remove_low
     
     for comment in comments:
         tokens = tokenize_and_filter(comment['text'])
-        for n in range(1, ngram_limit + 1):
+        for n in range(min_ngram, max_ngram + 1):
             for ngram in nltk.ngrams(tokens, n):
                 if preprocess_ngram(ngram, apply_remove_lowercase, custom_words):
                     phrase = ' '.join(ngram) if len(ngram) > 1 else ngram[0]
@@ -441,11 +471,8 @@ def is_incomplete_phrase(phrase):
     """Check if phrase ends with connecting words using regex."""
     return bool(CONNECTING_WORDS_REGEX.search(phrase))
 
-def top_phrases_combined(phrases, comments, top_n=10):
+def top_phrases_combined(phrases, comments, top_n=10, min_length=1, max_length=5):
     """Get top phrases using position-based scoring with substring deduplication"""
-    global phrases_found
-    phrases_found = 0
-    
     phrase_scores, total_upvotes = compute_phrase_scores(phrases, comments)
     
     sorted_phrases = sorted(
@@ -458,7 +485,9 @@ def top_phrases_combined(phrases, comments, top_n=10):
     seen_phrases = set()
     
     for phrase, score in sorted_phrases:
-        if (not is_incomplete_phrase(phrase) and
+        phrase_length = len(phrase.split())
+        if (min_length <= phrase_length <= max_length and
+            not is_incomplete_phrase(phrase) and
             phrase.lower() not in seen_phrases and 
             not is_substring_of_any(phrase, final_phrases)):
             
@@ -468,18 +497,6 @@ def top_phrases_combined(phrases, comments, top_n=10):
             if len(final_phrases) >= top_n:
                 break
     
-    if len(final_phrases) < top_n:
-        for phrase, score in sorted_phrases:
-            if (phrase not in final_phrases and 
-                not is_incomplete_phrase(phrase) and
-                phrase.lower() not in seen_phrases):
-                
-                final_phrases.append(phrase)
-                seen_phrases.add(phrase.lower())
-                
-                if len(final_phrases) >= top_n:
-                    break
-
     return [(phrase, phrase_scores[phrase], total_upvotes[phrase]) 
             for phrase in final_phrases[:top_n]]
 
@@ -541,7 +558,8 @@ def get_top_reddit_phrases():
         top_n = data.get('top_n', 3)
         custom_words_input = data.get('custom_words', '')
         custom_words = set(custom_words_input.lower().split(',')) if custom_words_input else set()
-        ngram_limit = data.get('ngram_limit', 5)
+        min_ngram = data.get('min_ngram', 1)
+        max_ngram = data.get('max_ngram', 5)
         apply_remove_lowercase = data.get('apply_remove_lowercase', True)
 
         # Step 1: Fetch Reddit JSON
@@ -604,7 +622,8 @@ def get_top_reddit_phrases():
         
         all_common_phrases = extract_filtered_phrases(
             comments=all_comments,
-            ngram_limit=ngram_limit,
+            min_ngram=min_ngram,
+            max_ngram=max_ngram,
             top_n=top_n,
             apply_remove_lowercase=apply_remove_lowercase,
             custom_words=custom_words
@@ -616,7 +635,13 @@ def get_top_reddit_phrases():
         # Step 4: Score and Rank
         score_start = time.time()
         logger.info("Step (4/4): Calculating top phrases...")
-        top_phrases = top_phrases_combined(all_common_phrases, all_comments, top_n=top_n)
+        top_phrases = top_phrases_combined(
+            all_common_phrases, 
+            all_comments, 
+            top_n=top_n,
+            min_length=min_ngram,
+            max_length=max_ngram
+        )
         score_time = time.time() - score_start
         logger.info(f"Step 4 - Scoring time: {score_time:.2f}s")
 
@@ -648,6 +673,23 @@ def get_top_reddit_phrases():
             response_data['warning'] = f"Only found {len(result)} relevant phrases. Add more threads if you'd like to see more!"
 
         logger.info(f"Returning result: {result}")
+
+        metrics = {
+            'total_comments': len(all_comments),
+            'num_urls': len(urls),
+            'top_n': top_n,
+            'min_ngram': min_ngram,
+            'max_ngram': max_ngram,
+            'custom_words': len(custom_words_input.split(',')) if custom_words_input else 0,
+            'total_time': total_time,
+            'fetch_time': fetch_time,
+            'clean_time': clean_time,
+            'extract_time': total_extract_time,
+            'score_time': score_time,
+            'memory_used': memory_used
+        }
+        log_performance_metrics(metrics)
+
         return jsonify({
             'phrases': result,
             'topic': topic_info['topic'],
@@ -685,10 +727,6 @@ def get_post_info():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
 
 # def remove_substrings(phrases):
 #     final_phrases = set()
@@ -771,10 +809,10 @@ if __name__ == '__main__':
 
 #     return set(combined_phrases)
 
-# def phrase_tfidf(phrases, comments, ngram_limit=5):
+# def phrase_tfidf(phrases, comments, max_ngram=5):
 #     comment_texts = [comment['text'] for comment in comments]
     
-#     vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, ngram_limit + 2), lowercase=False)
+#     vectorizer = TfidfVectorizer(vocabulary=phrases, ngram_range=(1, max_ngram + 2), lowercase=False)
 #     tfidf_matrix = vectorizer.fit_transform(comment_texts)
 
 #     tfidf_scores = np.sum(tfidf_matrix.toarray(), axis=0)
@@ -828,14 +866,14 @@ if __name__ == '__main__':
 
 
 
-# def extract_common_phrases(comments, ngram_limit=5, min_occurrences=2):
+# def extract_common_phrases(comments, max_ngram=5, min_occurrences=2):
 #     """Extract common n-grams from comments."""
 #     ngram_list = []
     
 #     for comment in comments:
 #         tokens = tokenize_and_filter(comment['text'])
         
-#         for n in range(2, ngram_limit + 1):
+#         for n in range(2, max_ngram + 1):
 #             for ngram in nltk.ngrams(tokens, n):
 #                 if not all(word.lower() in custom_stop_words for word in ngram):
 #                     ngram_list.append(ngram)
@@ -955,7 +993,7 @@ if __name__ == '__main__':
 
 # while min_occurrences >= 2:
 #     phrases_start = time.time()
-#     common_phrases = extract_common_phrases(all_comments, ngram_limit=ngram_limit, min_occurrences=min_occurrences)
+#     common_phrases = extract_common_phrases(all_comments, max_ngram=max_ngram, min_occurrences=min_occurrences)
 #     extract_time = time.time() - phrases_start
     
 #     post_start = time.time()
@@ -1073,3 +1111,4 @@ if __name__ == '__main__':
 #             logger.debug(f"Kept phrase '{current_phrase}'.")
     
 #     return final_phrases
+
