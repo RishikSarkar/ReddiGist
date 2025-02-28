@@ -9,10 +9,10 @@
     "flask-dev-unix": "FLASK_DEBUG=1 .venv/bin/pip3 install -r requirements.txt && .venv/bin/python3 -m flask --app api/index run -p 5328",
     "next-dev": "next dev",
     "dev": "concurrently \"npm run next-dev\" \"npm run flask-dev\"",
+    "dev-unix": "concurrently \"npm run next-dev\" \"npm run flask-dev-unix\"",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "update-browserslist": "npx update-browserslist-db@latest"
+    "lint": "next lint"
   },
   "dependencies": {
     "@types/node": "20.1.4",
