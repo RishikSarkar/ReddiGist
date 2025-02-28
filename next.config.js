@@ -1,16 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  rewrites: async () => {
+  async rewrites() {
     return [
       {
-        source: '/api/:path*',
-        destination:
-          process.env.NODE_ENV === 'development'
-            ? 'http://127.0.0.1:5328/api/:path*'
-            : '/api/:path*',
+        source: '/api/auth/:path*',
+        destination: '/api/auth/:path*',
       },
-    ]
+    ];
   },
+  
+  images: {
+    domains: ['lh3.googleusercontent.com'],
+  },
+  
+  env: {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+  }
 }
 
-module.exports = nextConfig
+module.exports = nextConfig;
