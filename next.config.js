@@ -1,10 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
+  rewrites: async () => {
     return [
       {
-        source: '/api/auth/:path*',
-        destination: '/api/auth/:path*',
+        source: '/api/post_info',
+        destination: '/api/post_info'
+      },
+      {
+        source: '/api/top_phrases',
+        destination: '/api/top_phrases'
       },
     ];
   },

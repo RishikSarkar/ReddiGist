@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AuthHeader from './components/AuthHeader';
+import { getSession } from 'next-auth/react';
 
 interface RedditPost {
   url: string;
@@ -249,16 +250,21 @@ export default function Home() {
     setProgressInterval(interval);
     
     try {
+      const session = await getSession();
+      
       const response = await fetch('/api/top_phrases', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(session?.user && { 'Authorization': `Bearer ${session.user}` })
+        },
         body: JSON.stringify({
           urls: selectedPosts.map(post => post.url),
           titles: selectedPosts.map(post => post.title),
           top_n: parseInt(topN),
+          custom_words: customWords,
           min_ngram: parseInt(minNgram),
           max_ngram: parseInt(maxNgram),
-          custom_words: customWords,
           apply_remove_lowercase: applyRemoveLowercase
         }),
       });
