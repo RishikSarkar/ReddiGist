@@ -1,4 +1,4 @@
-from flask import Flask, Response, request, jsonify
+from http.server import BaseHTTPRequestHandler
 import os
 import json
 import re
@@ -7,64 +7,66 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Regular expression to extract submission ID
-SUBMISSION_ID_REGEX = re.compile(r'/comments/([^/]+)/')
-
-# Initialize Reddit API client
 reddit = praw.Reddit(
     client_id=os.getenv('REDDIT_CLIENT_ID'),
     client_secret=os.getenv('REDDIT_CLIENT_SECRET'),
     user_agent="ReddiGist/1.0"
 )
 
+SUBMISSION_ID_REGEX = re.compile(r'/comments/([^/]+)/')
+
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
     return match.group(1) if match else None
 
-def handler(request):
-    # Extract request data
-    try:
-        data = json.loads(request.body)
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
         
-        # Validate request
-        if not data or 'url' not in data:
-            return Response(
-                json.dumps({"error": "URL is required"}),
-                status_code=400,
-                headers={"Content-Type": "application/json"}
-            )
-
-        # Get submission ID from URL
-        submission_id = get_submission_id(data['url'])
-        if not submission_id:
-            return Response(
-                json.dumps({"error": "Invalid Reddit URL"}),
-                status_code=400,
-                headers={"Content-Type": "application/json"}
-            )
-
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        
         try:
-            # Get submission from Reddit API
+            data = json.loads(post_data)
+            
+            if not data or 'url' not in data:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "URL is required"}).encode())
+                return
+
+            submission_id = get_submission_id(data['url'])
+            if not submission_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid Reddit URL"}).encode())
+                return
+
             submission = reddit.submission(id=submission_id)
             
-            # Return post info
-            return Response(
-                json.dumps({
-                    "title": submission.title,
-                    "numComments": submission.num_comments
-                }),
-                status_code=200,
-                headers={"Content-Type": "application/json"}
-            )
+            response_data = {
+                "title": submission.title,
+                "numComments": submission.num_comments
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
+            
         except Exception as e:
-            return Response(
-                json.dumps({"error": str(e)}),
-                status_code=500,
-                headers={"Content-Type": "application/json"}
-            )
-    except Exception as e:
-        return Response(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            headers={"Content-Type": "application/json"}
-        ) 
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode()) 

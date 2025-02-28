@@ -3,23 +3,14 @@ const nextConfig = {
   rewrites: async () => {
     return [
       {
-        source: '/api/post_info',
-        destination: '/api/post_info'
+        source: '/api/:path*',
+        destination:
+          process.env.NODE_ENV === 'development'
+            ? 'http://127.0.0.1:5328/api/:path*'
+            : '/api/:path*',
       },
-      {
-        source: '/api/top_phrases',
-        destination: '/api/top_phrases'
-      },
-    ];
+    ]
   },
-  
-  images: {
-    domains: ['lh3.googleusercontent.com'],
-  },
-  
-  env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
-  }
 }
 
-module.exports = nextConfig;
+module.exports = nextConfig

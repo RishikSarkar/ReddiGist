@@ -1,79 +1,75 @@
-from flask import Flask, Response, request
+from http.server import BaseHTTPRequestHandler
 import os
 import json
+import re
+import math
+import time
+import logging
+from collections import Counter, defaultdict
+from functools import lru_cache
+from typing import Tuple, List
 import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import praw
+from dotenv import load_dotenv
 
-app = Flask(__name__)
+load_dotenv()
 
-@app.route('/api/top_phrases', methods=['POST'])
-def api_top_phrases():
-    try:
-        data = json.loads(request.data)
-        
-        if not data or not data.get('urls') or not data.get('titles'):
-            return Response(
-                json.dumps({"error": "URLs and titles are required"}),
-                status=400,
-                mimetype='application/json'
-            )
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-        result = [
-            {"phrase": "Example Phrase 1", "score": "123.45", "upvotes": 100},
-            {"phrase": "Example Phrase 2", "score": "67.89", "upvotes": 50}
-        ]
-        
-        return Response(
-            json.dumps({
-                "phrases": result,
-                "topic": "Example Topic",
-                "warning": None
-            }),
-            status=200,
-            mimetype='application/json'
-        )
-        
-    except Exception as e:
-        return Response(
-            json.dumps({"error": str(e)}),
-            status=500,
-            mimetype='application/json'
-        )
+reddit = praw.Reddit(
+    client_id=os.getenv('REDDIT_CLIENT_ID'),
+    client_secret=os.getenv('REDDIT_CLIENT_SECRET'),
+    user_agent="ReddiGist/1.0"
+)
 
-def handler(request):
-    try:
-        # Extract request data
-        data = json.loads(request.body)
-        
-        # Validate request
-        if not data or not data.get('urls') or not data.get('titles'):
-            return Response(
-                json.dumps({"error": "URLs and titles are required"}),
-                status_code=400,
-                headers={"Content-Type": "application/json"}
-            )
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
-        # Call your Reddit analysis functions
-        # (Simplified from your original code)
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
+
+custom_stop_words = set(stopwords.words('english'))
+
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
         
-        # Return dummy results for now
-        result = [
-            {"phrase": "Example Phrase 1", "score": "123.45", "upvotes": 100},
-            {"phrase": "Example Phrase 2", "score": "67.89", "upvotes": 50}
-        ]
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
         
-        return Response(
-            json.dumps({
-                "phrases": result,
-                "topic": "Example Topic",
-                "warning": None
-            }),
-            status_code=200,
-            headers={"Content-Type": "application/json"}
-        )
-        
-    except Exception as e:
-        return Response(
-            json.dumps({"error": str(e)}),
-            status_code=500,
-            headers={"Content-Type": "application/json"}
-        ) 
+        try:
+            data = json.loads(post_data)
+            
+            response_data = {
+                "top_phrases": [
+                    {"phrase": "Test Phrase 1", "score": "0.85", "upvotes": 10},
+                    {"phrase": "Test Phrase 2", "score": "0.75", "upvotes": 8},
+                    {"phrase": "Test Phrase 3", "score": "0.65", "upvotes": 6}
+                ]
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
+            
+        except Exception as e:
+            logger.error(f"Error processing top phrases: {str(e)}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode()) 
