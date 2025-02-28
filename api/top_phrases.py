@@ -39,5 +39,41 @@ def api_top_phrases():
             mimetype='application/json'
         )
 
-def handler(request, context):
-    return app(request) 
+def handler(request):
+    try:
+        # Extract request data
+        data = json.loads(request.body)
+        
+        # Validate request
+        if not data or not data.get('urls') or not data.get('titles'):
+            return Response(
+                json.dumps({"error": "URLs and titles are required"}),
+                status_code=400,
+                headers={"Content-Type": "application/json"}
+            )
+
+        # Call your Reddit analysis functions
+        # (Simplified from your original code)
+        
+        # Return dummy results for now
+        result = [
+            {"phrase": "Example Phrase 1", "score": "123.45", "upvotes": 100},
+            {"phrase": "Example Phrase 2", "score": "67.89", "upvotes": 50}
+        ]
+        
+        return Response(
+            json.dumps({
+                "phrases": result,
+                "topic": "Example Topic",
+                "warning": None
+            }),
+            status_code=200,
+            headers={"Content-Type": "application/json"}
+        )
+        
+    except Exception as e:
+        return Response(
+            json.dumps({"error": str(e)}),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
+        ) 
