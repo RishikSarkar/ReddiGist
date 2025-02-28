@@ -138,71 +138,69 @@ export default function Home() {
 
   const handleAddUrl = async (e: React.FormEvent) => {
     e.preventDefault();
-    const submittedUrl = currentUrl;
     
-    if (submittedUrl) {
-      if (selectedPosts.some(post => post.url === submittedUrl)) {
-        setCurrentUrl('');
-        setDuplicateUrlMessage('URL already added...');
-        setTimeout(() => setDuplicateUrlMessage(null), 1000);
-        return;
+    if (!currentUrl.trim()) {
+      return;
+    }
+    
+    if (selectedPosts.some(post => post.url === currentUrl)) {
+      setCurrentUrl('');
+      return;
+    }
+    
+    setIsLoading(true);
+    setErrorMessage('');
+    
+    try {
+      console.log('Fetching post info for:', currentUrl);
+      const response = await fetch('/api/post_info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: currentUrl }),
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error(`Server error: ${response.status}`);
       }
       
-      const currentTotalComments = selectedPosts.reduce((sum, post) => sum + (post.numComments || 0), 0);
-      setIsLoadingPost(true);
+      const data = await response.json();
+      console.log('Post info data:', data);
       
-      try {
-        const response = await fetch('/api/post_info', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ url: submittedUrl }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch post info');
-        }
-
-        const data = await response.json();
-        
-        if (currentTotalComments >= MAX_TOTAL_COMMENTS) {
-          setIsLoadingPost(false);
-          setLoadingPostDots(0);
-          setCurrentUrl(submittedUrl);
-          setErrorMessage(`Maximum comment limit (${MAX_TOTAL_COMMENTS.toLocaleString()}) already reached. Cannot add more threads.`);
-          return;
-        }
-
-        const remainingSpace = MAX_TOTAL_COMMENTS - currentTotalComments;
-        const effectiveComments = Math.min(data.numComments, remainingSpace);
-        
-        const newPost: RedditPost = {
-          url: submittedUrl,
-          title: data.title,
-          numComments: data.numComments,
-          effectiveComments: effectiveComments
-        };
-
-        if (currentTotalComments + data.numComments > MAX_TOTAL_COMMENTS) {
-          const message = `This thread has ${data.numComments.toLocaleString()} comments. Only the top ${effectiveComments.toLocaleString()} comments will be analyzed to stay within the ${MAX_TOTAL_COMMENTS.toLocaleString()} comment limit.`;
-          setErrorMessage(message);
-        }
-
-        setSelectedPosts([...selectedPosts, newPost]);
-        setCurrentUrl('');
-      } catch (error) {
-        console.error('Error fetching post info:', error);
-        const newPost: RedditPost = {
-          url: submittedUrl,
-          title: extractTitleFromUrl(submittedUrl)
-        };
-        setSelectedPosts([...selectedPosts, newPost]);
-        setCurrentUrl('');
-      } finally {
-        setIsLoadingPost(false);
-        setLoadingPostDots(0);
+      if (data.error) {
+        throw new Error(data.error);
       }
+      
+      const newPost: RedditPost = {
+        url: currentUrl,
+        title: data.title || 'Unknown Title',
+        numComments: data.numComments || 0,
+        effectiveComments: Math.min(data.numComments || 0, MAX_TOTAL_COMMENTS)
+      };
+      
+      setSelectedPosts(prev => {
+        const newPosts = prev.length >= MAX_THREADS 
+          ? [...prev.slice(1), newPost] 
+          : [...prev, newPost];
+        
+        if (isMounted) {
+          saveToLocalStorage('selectedPosts', newPosts);
+        }
+        
+        return newPosts;
+      });
+      
+      setCurrentUrl('');
+    } catch (error) {
+      console.error('Error fetching post info:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Failed to fetch post info'}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -257,9 +255,9 @@ export default function Home() {
           urls: selectedPosts.map(post => post.url),
           titles: selectedPosts.map(post => post.title),
           top_n: parseInt(topN),
-          custom_words: customWords,
           min_ngram: parseInt(minNgram),
           max_ngram: parseInt(maxNgram),
+          custom_words: customWords,
           apply_remove_lowercase: applyRemoveLowercase
         }),
       });

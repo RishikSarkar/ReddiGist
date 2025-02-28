@@ -100,32 +100,32 @@ STATS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'se
 os.makedirs(STATS_DIR, exist_ok=True)
 STATS_FILE = os.path.join(STATS_DIR, 'performance_metrics.csv')
 
-def log_performance_metrics(metrics):
-    """Log performance metrics to Supabase"""
-    try:
-        from supabase import create_client
+# def log_performance_metrics(metrics):
+#     """Log performance metrics to Supabase"""
+#     try:
+#         from supabase import create_client
         
-        supabase = create_client(
-            os.getenv('SUPABASE_URL', ''),
-            os.getenv('SUPABASE_KEY', '')
-        )
+#         supabase = create_client(
+#             os.getenv('SUPABASE_URL', ''),
+#             os.getenv('SUPABASE_KEY', '')
+#         )
         
-        supabase.table('performance_metrics').insert({
-            'total_comments': metrics['total_comments'],
-            'num_urls': metrics['num_urls'],
-            'top_n': metrics['top_n'],
-            'min_ngram': metrics['min_ngram'],
-            'max_ngram': metrics['max_ngram'],
-            'custom_words': metrics['custom_words'],
-            'total_time': metrics['total_time'],
-            'fetch_time': metrics['fetch_time'],
-            'clean_time': metrics['clean_time'],
-            'extract_time': metrics['extract_time'],
-            'score_time': metrics['score_time'],
-            'memory_usage': metrics['memory_used']
-        }).execute()
-    except Exception as e:
-        logger.error(f"Failed to log metrics to Supabase: {e}")
+#         supabase.table('performance_metrics').insert({
+#             'total_comments': metrics['total_comments'],
+#             'num_urls': metrics['num_urls'],
+#             'top_n': metrics['top_n'],
+#             'min_ngram': metrics['min_ngram'],
+#             'max_ngram': metrics['max_ngram'],
+#             'custom_words': metrics['custom_words'],
+#             'total_time': metrics['total_time'],
+#             'fetch_time': metrics['fetch_time'],
+#             'clean_time': metrics['clean_time'],
+#             'extract_time': metrics['extract_time'],
+#             'score_time': metrics['score_time'],
+#             'memory_usage': metrics['memory_used']
+#         }).execute()
+#     except Exception as e:
+#         logger.error(f"Failed to log metrics to Supabase: {e}")
 
 def get_submission_id(url):
     match = SUBMISSION_ID_REGEX.search(url)
@@ -316,7 +316,7 @@ def normalize_phrase(phrase: str) -> str:
             
     return ' '.join(words)
 
-def extract_filtered_phrases(comments, min_ngram, max_ngram, top_n, apply_remove_lowercase, custom_words):
+def extract_filtered_phrases(comments, min_ngram=1, max_ngram=5, top_n=10, apply_remove_lowercase=True, custom_words=None):
     """Extract all relevant phrases and then select the top_n phrases after filtering."""
     
     ngram_counts = Counter()
@@ -557,10 +557,10 @@ def get_top_reddit_phrases():
             return jsonify({"error": "URLs and titles are required"}), 400
 
         top_n = data.get('top_n', 3)
+        min_ngram = int(data.get('min_ngram', 1))
+        max_ngram = int(data.get('max_ngram', 5))
         custom_words_input = data.get('custom_words', '')
         custom_words = set(custom_words_input.lower().split(',')) if custom_words_input else set()
-        min_ngram = data.get('min_ngram', 1)
-        max_ngram = data.get('max_ngram', 5)
         apply_remove_lowercase = data.get('apply_remove_lowercase', True)
 
         # Step 1: Fetch Reddit JSON
@@ -675,21 +675,21 @@ def get_top_reddit_phrases():
 
         logger.info(f"Returning result: {result}")
 
-        metrics = {
-            'total_comments': len(all_comments),
-            'num_urls': len(urls),
-            'top_n': top_n,
-            'min_ngram': min_ngram,
-            'max_ngram': max_ngram,
-            'custom_words': len(custom_words_input.split(',')) if custom_words_input else 0,
-            'total_time': total_time,
-            'fetch_time': fetch_time,
-            'clean_time': clean_time,
-            'extract_time': total_extract_time,
-            'score_time': score_time,
-            'memory_used': memory_used
-        }
-        log_performance_metrics(metrics)
+        # metrics = {
+        #     'total_comments': len(all_comments),
+        #     'num_urls': len(urls),
+        #     'top_n': top_n,
+        #     'min_ngram': min_ngram,
+        #     'max_ngram': max_ngram,
+        #     'custom_words': len(custom_words_input.split(',')) if custom_words_input else 0,
+        #     'total_time': total_time,
+        #     'fetch_time': fetch_time,
+        #     'clean_time': clean_time,
+        #     'extract_time': total_extract_time,
+        #     'score_time': score_time,
+        #     'memory_used': memory_used
+        # }
+        # log_performance_metrics(metrics)
 
         return jsonify({
             'phrases': result,
@@ -725,6 +725,9 @@ def get_post_info():
     except Exception as e:
         logger.error(f"Error fetching post info: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
