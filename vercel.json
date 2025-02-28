@@ -2,10 +2,10 @@
   "version": 2,
   "functions": {
     "api/post_info.py": {
-      "maxDuration": 10
-    },
-    "api/index.py": {
       "maxDuration": 30
+    },
+    "api/top_phrases.py": {
+      "maxDuration": 60
     }
   },
   "routes": [
@@ -17,11 +17,7 @@
     {
       "src": "/api/top_phrases",
       "methods": ["POST", "OPTIONS"],
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
+      "dest": "/api/top_phrases.py"
     },
     {
       "src": "/(.*)",
